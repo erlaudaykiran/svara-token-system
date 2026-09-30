@@ -183,11 +183,13 @@ def counters():
     try:
         out = {}
         for c in conn.execute("SELECT * FROM counters"):
-            out[c["type_key"]] = {"label": c["label"], "issued": c["last_no"],
+            count = conn.execute("SELECT COUNT(*) FROM tokens WHERE type_key = ?", (c["type_key"],)).fetchone()[0]
+            out[c["type_key"]] = {"label": c["label"], "issued": count,
                                   "next": fmt_serial(c["prefix"], c["last_no"] + 1)}
     finally:
         conn.close()
     return jsonify(out)
+
 
 
 @app.post("/api/tokens")
@@ -242,6 +244,23 @@ def list_tokens():
         return jsonify([token_json(r) for r in all_rows(conn, newest_first=True)])
     finally:
         conn.close()
+
+
+@app.delete("/api/tokens/<serial>")
+@require_auth
+def delete_token(serial):
+    serial = str(serial).strip().upper()
+    conn = connect()
+    try:
+        row = conn.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
+        if not row:
+            return jsonify(error=f"Token {serial} was not found."), 404
+        conn.execute("DELETE FROM tokens WHERE UPPER(serial) = ?", (serial,))
+        refresh_excel_file(conn)
+    finally:
+        conn.close()
+    return jsonify(success=True, deleted=serial, message=f"Token {serial} cancelled and removed from database and Excel.")
+
 
 
 @app.get("/api/export")

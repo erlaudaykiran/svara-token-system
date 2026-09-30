@@ -48,6 +48,9 @@ button.s{background:transparent;color:var(--maroon)}
 table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px}
 th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap}
 th{background:#efe3c6}
+.del-btn{background:#fff;color:#b00020;border:1px solid #b00020;padding:3px 9px;font-size:12px;border-radius:3px;cursor:pointer;font-family:Arial,sans-serif;font-weight:600}
+.del-btn:hover{background:#b00020;color:#fff}
+
 /* print area */
 #printArea{display:none}
 .token{width:76mm;border:1.5px dashed #000;padding:5mm 4mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid}
@@ -130,7 +133,9 @@ th{background:#efe3c6}
     <div class="row">
       <button class="s" id="xlsBtn">Download Excel</button>
       <button class="s" id="viewBtn">View records</button>
+      <button class="s" id="cancelPromptBtn" style="color:#b00020;border-color:#b00020">Cancel token by Serial</button>
     </div>
+
     <div class="tablewrap hidden" id="tableWrap"></div>
   </section>
 </main>
@@ -297,11 +302,35 @@ document.getElementById('saveBtn').onclick=function(){
 function renderTable(){
   api('/api/tokens').then(function(r){
     if(!r.length){document.getElementById('tableWrap').innerHTML='<p class="counts">No records yet.</p>';return}
-    var h='<table><tr><th>Serial</th><th>Type</th><th>Name</th><th>Mobile</th><th>Payment</th><th>Date</th><th>Time</th></tr>';
-    r.forEach(function(x){h+='<tr><td>'+esc(x.serial)+'</td><td>'+esc(x.type)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+esc(x.payment)+'</td><td>'+x.date+'</td><td>'+x.time+'</td></tr>'});
+    var h='<table><tr><th>Serial</th><th>Type</th><th>Name</th><th>Mobile</th><th>Payment</th><th>Date</th><th>Time</th><th>Action</th></tr>';
+    r.forEach(function(x){
+      h+='<tr><td><b>'+esc(x.serial)+'</b></td><td>'+esc(x.type)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+esc(x.payment)+'</td><td>'+x.date+'</td><td>'+x.time+'</td><td><button class="del-btn" onclick="cancelToken(\''+esc(x.serial)+'\',\''+esc(x.name)+'\')">Cancel</button></td></tr>';
+    });
     document.getElementById('tableWrap').innerHTML=h+'</table>';
   }).catch(function(e){document.getElementById('tableWrap').innerHTML='<p class="counts">'+esc(e.message)+'</p>'});
 }
+
+function cancelToken(serial, name){
+  var msg = 'Are you sure you want to cancel and delete token ' + serial;
+  if(name) msg += ' (' + name + ')';
+  msg += '?\n\nThis will remove it immediately from both the database and the Excel file.';
+  if(!confirm(msg)) return;
+  api('/api/tokens/' + encodeURIComponent(serial), { method: 'DELETE' })
+    .then(function(res){
+      alert(res.message || ('Token ' + serial + ' cancelled successfully.'));
+      refresh();
+    })
+    .catch(function(e){
+      alert('Error: ' + e.message);
+    });
+}
+
+document.getElementById('cancelPromptBtn').onclick = function(){
+  var s = prompt('Enter Token Serial to cancel and delete (e.g. B001, S005, SA002):');
+  if(!s || !s.trim()) return;
+  cancelToken(s.trim().toUpperCase());
+};
+
 document.getElementById('viewBtn').onclick=function(){
   var w=document.getElementById('tableWrap');
   w.classList.toggle('hidden');
@@ -312,6 +341,7 @@ document.getElementById('viewBtn').onclick=function(){
 document.getElementById('xlsBtn').onclick=function(){window.location.href='/api/export'};
 
 checkAuth();
+
 </script>
 </body>
 </html>
