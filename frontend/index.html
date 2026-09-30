@@ -122,24 +122,27 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 <section id="loginSection" class="hidden">
   <div class="panel login-panel">
     <div class="tag" style="background:var(--maroon);margin-bottom:10px;">Staff &amp; Admin Sign In</div>
-    <h2 style="margin-top:0">Counter Login</h2>
+    <h2 style="margin-top:0">Sign In</h2>
     <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
-      Sign in with your assigned Counter ID or Administrator credentials.
+      Enter your User ID and Password below to access the token system.
     </p>
     <label for="loginUser">User ID</label>
-    <input id="loginUser" type="text" autocomplete="username" placeholder="e.g. counter1, counter2, counter3, admin">
+    <input id="loginUser" type="text" autocomplete="username" placeholder="e.g. admin, counter1, counter2, counter3">
     <label for="loginPass">Password</label>
     <input id="loginPass" type="password" autocomplete="current-password" placeholder="Enter Password">
     <div class="err" id="loginErr"></div>
     <div class="row" style="margin-top:16px">
       <button class="p" id="loginBtn">Sign In</button>
     </div>
-    <div style="font-family:Arial,sans-serif;font-size:12px;color:#7a6858;margin-top:16px;border-top:1px dashed var(--line);padding-top:10px;line-height:1.4">
-      <b>Counters:</b> <code>counter1</code>, <code>counter2</code>, <code>counter3</code><br>
-      <b>Admin:</b> <code>admin</code> (Access all counters combined)
+    <div style="font-family:Arial,sans-serif;font-size:12px;color:#7a6858;margin-top:16px;border-top:1px dashed var(--line);padding-top:10px;line-height:1.6">
+      <b>👑 Admin:</b> User: <code>admin</code> &bull; Password: <code>admin@svara2026</code> (or <code>svara@2026</code>)<br>
+      <b>👤 Counter 1:</b> <code>counter1</code> &bull; Password: <code>counter1@2026</code><br>
+      <b>👤 Counter 2:</b> <code>counter2</code> &bull; Password: <code>counter2@2026</code><br>
+      <b>👤 Counter 3:</b> <code>counter3</code> &bull; Password: <code>counter3@2026</code>
     </div>
   </div>
 </section>
+
 
 <main id="appView" class="hidden">
   <section id="stepChoose">
@@ -338,11 +341,15 @@ function doLogin(){
   var u = document.getElementById('loginUser').value.trim();
   var p = document.getElementById('loginPass').value.trim();
   var err = document.getElementById('loginErr');
+  var btn = document.getElementById('loginBtn');
   if(!u || !p){
     err.textContent = 'Please enter both User ID and Password.';
     return;
   }
   err.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+
   fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -359,8 +366,13 @@ function doLogin(){
   })
   .catch(function(e){
     err.textContent = e.message;
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
   });
 }
+
 
 document.getElementById('loginBtn').onclick = doLogin;
 document.getElementById('loginPass').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
