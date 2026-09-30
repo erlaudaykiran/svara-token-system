@@ -3,69 +3,95 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SVARA Token Printing</title>
+<title>SVARA 2026 Token Printing System</title>
 <style>
-:root{--bg:#f6efe2;--ink:#2a1216;--maroon:#7a1424;--gold:#b98a2e;--card:#fffaf0;--line:#dccfb4}
+:root{--bg:#f6efe2;--ink:#2a1216;--maroon:#7a1424;--maroon-dark:#590e1a;--gold:#b98a2e;--card:#fffaf0;--line:#dccfb4;--green:#1b5e20;--red:#b00020}
 *{box-sizing:border-box}
 body{margin:0;font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--ink);min-height:100vh}
-header{background:var(--maroon);color:#f7e6b8;padding:18px 20px;text-align:center;position:relative}
-header h1{margin:0;font-size:34px;letter-spacing:.35em;font-weight:700;padding-left:.35em}
-header p{margin:4px 0 0;font-size:15px}
-#clock{font-size:13px;opacity:.85;margin-top:6px;font-family:Arial,sans-serif}
-.auth-bar{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px;font-family:Arial,sans-serif;font-size:13px}
+header{background:var(--maroon);color:#f7e6b8;padding:16px 20px;text-align:center;position:relative;box-shadow:0 3px 8px rgba(0,0,0,.15)}
+header h1{margin:0;font-size:32px;letter-spacing:.32em;font-weight:700;padding-left:.32em}
+header p{margin:3px 0 0;font-size:14px;letter-spacing:.05em}
+#clock{font-size:13px;opacity:.9;margin-top:5px;font-family:Arial,sans-serif}
+.auth-bar{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px;font-family:Arial,sans-serif;font-size:13px;flex-wrap:wrap}
+.user-badge{background:rgba(247,230,184,.18);border:1px solid #f7e6b8;border-radius:20px;padding:3px 14px;font-weight:600;letter-spacing:.02em}
 .logout-btn{background:transparent;border:1px solid #f7e6b8;color:#f7e6b8;border-radius:4px;padding:4px 12px;cursor:pointer;font-family:Arial,sans-serif;font-size:12px;transition:all .15s}
 .logout-btn:hover{background:#f7e6b8;color:var(--maroon)}
-main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+main{max-width:880px;margin:0 auto;padding:24px 16px 60px}
 h2{font-size:22px;margin:0 0 16px}
-.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
-.choice{background:var(--card);border:2px solid var(--line);border-radius:6px;padding:26px 16px;text-align:center;cursor:pointer;font:inherit;color:inherit}
-.choice:hover,.choice:focus-visible{border-color:var(--maroon);outline:none;background:#fff3d6}
-.choice b{display:block;font-size:24px;margin-bottom:6px}
-.choice span{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a}
-.panel{background:var(--card);border:2px solid var(--line);border-radius:6px;padding:22px;max-width:480px;margin:0 auto}
-.login-panel{max-width:390px;margin:40px auto 0;box-shadow:0 6px 16px rgba(0,0,0,.06)}
-label{display:block;font-family:Arial,sans-serif;font-size:14px;margin:14px 0 5px}
-input{width:100%;padding:12px;font-size:18px;border:2px solid var(--line);border-radius:4px;background:#fff;font-family:Arial,sans-serif}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.choice{background:var(--card);border:2px solid var(--line);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;font:inherit;color:inherit;transition:all .18s;box-shadow:0 2px 6px rgba(0,0,0,.04)}
+.choice:hover,.choice:focus-visible{border-color:var(--maroon);outline:none;background:#fff3d6;transform:translateY(-2px);box-shadow:0 6px 14px rgba(122,20,36,.12)}
+.choice b{display:block;font-size:22px;margin-bottom:4px;color:var(--maroon)}
+.choice .card-price{display:inline-block;background:var(--maroon);color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;padding:3px 12px;border-radius:14px;margin:6px 0 8px}
+.choice .choice-serial{font-family:Arial,sans-serif;font-size:12px;color:#7a6858;display:block}
+.choice .choice-next{font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:var(--gold);display:block;margin-top:6px}
+.panel{background:var(--card);border:2px solid var(--line);border-radius:8px;padding:22px 24px;max-width:500px;margin:0 auto;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.login-panel{max-width:400px;margin:40px auto 0}
+label{display:block;font-family:Arial,sans-serif;font-size:14px;font-weight:600;margin:14px 0 5px}
+input{width:100%;padding:11px 12px;font-size:17px;border:2px solid var(--line);border-radius:4px;background:#fff;font-family:Arial,sans-serif}
 input:focus{outline:none;border-color:var(--maroon)}
 .pay{display:flex;gap:10px}
 .pay label{flex:1;margin:0;cursor:pointer}
 .pay input{position:absolute;opacity:0;width:0;height:0}
-.pay span{display:block;text-align:center;padding:12px;font-size:18px;border:2px solid var(--line);border-radius:4px;background:#fff}
+.pay span{display:block;text-align:center;padding:11px;font-size:16px;font-weight:700;border:2px solid var(--line);border-radius:4px;background:#fff}
 .pay input:checked+span{background:var(--maroon);color:#fff;border-color:var(--maroon)}
 .pay input:focus-visible+span{outline:3px solid var(--gold)}
-.err{color:#b00020;font-family:Arial,sans-serif;font-size:14px;min-height:20px;margin-top:8px}
+.err{color:var(--red);font-family:Arial,sans-serif;font-size:14px;min-height:20px;margin-top:8px;font-weight:600}
 .row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
-button.p,button.s{padding:13px 20px;font-size:16px;border-radius:4px;cursor:pointer;font-family:Arial,sans-serif;border:2px solid var(--maroon)}
+button.p,button.s{padding:12px 18px;font-size:15px;font-weight:700;border-radius:5px;cursor:pointer;font-family:Arial,sans-serif;border:2px solid var(--maroon);transition:all .15s}
 button.p{background:var(--maroon);color:#fff;flex:1}
+button.p:hover{background:var(--maroon-dark)}
 button.s{background:transparent;color:var(--maroon)}
-.tag{display:inline-block;background:var(--maroon);color:#f7e6b8;padding:4px 12px;border-radius:3px;font-family:Arial,sans-serif;font-size:14px;margin-bottom:6px}
+button.s:hover{background:#fff0d4}
+.tag{display:inline-block;background:var(--maroon);color:#f7e6b8;padding:4px 14px;border-radius:4px;font-family:Arial,sans-serif;font-size:14px;font-weight:700;margin-bottom:6px}
 .qty-row{display:flex;align-items:center;gap:8px}
-.qty-btn{padding:10px 18px!important;font-size:22px!important;font-weight:700!important;line-height:1;border-radius:4px;user-select:none}
-.qty-preview{font-family:Arial,sans-serif;font-size:13px;color:var(--maroon);font-weight:600;margin-top:6px;min-height:18px}
-.next{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a}
+.qty-btn{padding:8px 18px!important;font-size:22px!important;font-weight:700!important;line-height:1;border-radius:4px;user-select:none}
+.qty-preview{font-family:Arial,sans-serif;font-size:13px;color:var(--maroon);font-weight:700;margin-top:7px;min-height:18px}
+.next{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-bottom:8px}
 .hidden{display:none!important}
 
-.tools{margin-top:34px;border-top:1px solid var(--line);padding-top:18px}
-.tools .row{margin-top:0}
-.counts{font-family:Arial,sans-serif;font-size:14px;margin:0 0 12px}
-.tablewrap{overflow-x:auto;margin-top:14px}
-table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px}
-th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap}
-th{background:#efe3c6}
-.del-btn{background:#fff;color:#b00020;border:1px solid #b00020;padding:3px 9px;font-size:12px;border-radius:3px;cursor:pointer;font-family:Arial,sans-serif;font-weight:600}
-.del-btn:hover{background:#b00020;color:#fff}
+/* Two-step confirm box */
+.save-confirm-box{background:#fdf5e2;border:2px solid var(--gold);border-radius:8px;padding:16px;margin-top:18px;box-shadow:0 4px 12px rgba(185,138,46,.15)}
+.confirm-banner{border-bottom:1px dashed var(--gold);padding-bottom:12px;margin-bottom:12px}
+.confirm-title{font-size:16px;font-weight:700;color:var(--maroon);display:flex;align-items:center;gap:6px}
+.confirm-desc{font-family:Arial,sans-serif;font-size:13px;margin:5px 0 0;line-height:1.45;color:#4a3828}
+.confirm-details{font-family:Arial,sans-serif;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:8px 12px;margin-top:8px;font-weight:600;color:var(--ink)}
+.confirm-save-btn{background:#1b5e20!important;border-color:#1b5e20!important;color:#fff!important;flex:2!important}
+.confirm-save-btn:hover{background:#124116!important}
+.discard-btn{color:var(--red)!important;border-color:var(--red)!important}
+.discard-btn:hover{background:#ffebee!important}
 
-/* print area */
+/* Tools & admin tabs */
+.tools{margin-top:36px;border-top:1px solid var(--line);padding-top:18px}
+.counts{font-family:Arial,sans-serif;font-size:14px;margin:0 0 10px;font-weight:600}
+.admin-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;font-family:Arial,sans-serif;font-size:13px}
+.summary-card{background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.summary-card b{display:block;color:var(--maroon);font-size:15px;margin-bottom:2px}
+.counter-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab-btn{background:#fff;border:1px solid var(--line);border-radius:4px;padding:6px 14px;cursor:pointer;font-family:Arial,sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
+.tab-btn.active{background:var(--maroon);color:#fff;border-color:var(--maroon)}
+.tablewrap{overflow-x:auto;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;background:#fff}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;white-space:nowrap}
+th{background:#efe3c6;color:var(--maroon);font-weight:700}
+.del-btn{background:#fff;color:var(--red);border:1px solid var(--red);padding:3px 9px;font-size:12px;border-radius:3px;cursor:pointer;font-family:Arial,sans-serif;font-weight:700}
+.del-btn:hover{background:var(--red);color:#fff}
+
+/* Thermal printer print area */
 #printArea{display:none}
-.token{width:76mm;border:1.5px dashed #000;padding:5mm 4mm 6mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid;page-break-after:always;break-after:page}
-.token .h{font-size:30px;font-weight:700;letter-spacing:.3em;padding-left:.3em;font-family:Georgia,serif}
-.token .sub{font-size:15px;margin-top:2px}
-.token .contact{font-size:12px;font-weight:700;margin-top:4px;letter-spacing:.01em}
-.token .cat{font-size:17px;font-weight:700;margin-top:7px;border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 0}
-.token .no{font-size:40px;font-weight:700;margin:6px 0;letter-spacing:.04em}
-.token .d{font-size:13px;text-align:left;margin-top:4px}
+.token{width:74mm;border:1.5px dashed #000;padding:4mm 3mm 5mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid;page-break-after:always;break-after:page}
+.token-header{display:flex;align-items:center;justify-content:flex-start;gap:6px;margin-bottom:4px;text-align:left}
+.token-logo{width:50px;height:50px;object-fit:contain;flex-shrink:0}
+.token-header-text{flex-grow:1;text-align:center}
+.token .h{font-size:24px;font-weight:700;letter-spacing:.25em;padding-left:.25em;font-family:Georgia,serif;line-height:1.1;margin:0}
+.token .sub{font-size:13px;font-weight:700;margin-top:1px}
+.token .contact{font-size:10px;font-weight:700;margin-top:2px;letter-spacing:.01em}
+.token .cat{font-size:16px;font-weight:700;margin-top:6px;border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 0}
+.token .no{font-size:38px;font-weight:700;margin:5px 0;letter-spacing:.04em}
+.token .d{font-size:13px;text-align:left;margin-top:4px;line-height:1.4}
 .token .cp{font-size:12px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px}
 .cut-spacer{height:10mm}
+
 @media print{
  @page{size:80mm auto;margin:2mm 0}
  body{background:#fff;margin:0;padding:0}
@@ -74,14 +100,13 @@ th{background:#efe3c6}
  .token{
    width:72mm!important;
    margin:0 auto!important;
-   padding:4mm 3mm 6mm!important;
+   padding:3mm 2mm 5mm!important;
    page-break-inside:avoid!important;
    page-break-after:always!important;
    break-after:page!important;
  }
 }
 </style>
-
 </head>
 <body>
 <header>
@@ -89,37 +114,57 @@ th{background:#efe3c6}
   <p>2026 Lucky Draw &mdash; Token Counter</p>
   <div id="clock"></div>
   <div id="authBar" class="auth-bar hidden">
-    <span>Authorized Session Active</span>
+    <span id="userBadge" class="user-badge"></span>
     <button id="logoutBtn" class="logout-btn">Sign Out</button>
   </div>
 </header>
 
 <section id="loginSection" class="hidden">
   <div class="panel login-panel">
-    <div class="tag" style="background:var(--maroon);margin-bottom:10px;">Staff Access Only</div>
-    <h2 style="margin-top:0">Sign In</h2>
+    <div class="tag" style="background:var(--maroon);margin-bottom:10px;">Staff &amp; Admin Sign In</div>
+    <h2 style="margin-top:0">Counter Login</h2>
     <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
-      Only one authorized person can access the token counter at a time.
+      Sign in with your assigned Counter ID or Administrator credentials.
     </p>
     <label for="loginUser">User ID</label>
-    <input id="loginUser" type="text" autocomplete="username" placeholder="Enter User ID">
+    <input id="loginUser" type="text" autocomplete="username" placeholder="e.g. counter1, counter2, counter3, admin">
     <label for="loginPass">Password</label>
     <input id="loginPass" type="password" autocomplete="current-password" placeholder="Enter Password">
     <div class="err" id="loginErr"></div>
     <div class="row" style="margin-top:16px">
       <button class="p" id="loginBtn">Sign In</button>
     </div>
+    <div style="font-family:Arial,sans-serif;font-size:12px;color:#7a6858;margin-top:16px;border-top:1px dashed var(--line);padding-top:10px;line-height:1.4">
+      <b>Counters:</b> <code>counter1</code>, <code>counter2</code>, <code>counter3</code><br>
+      <b>Admin:</b> <code>admin</code> (Access all counters combined)
+    </div>
   </div>
 </section>
 
 <main id="appView" class="hidden">
   <section id="stepChoose">
-    <h2>Select token type</h2>
+    <h2>Select Lucky Draw Token Type</h2>
     <div class="choices">
-      <button class="choice" data-k="RE"><b>Royal Enfield</b><span>Serial starts at B00001</span><br><span id="nx-RE"></span></button>
-      <button class="choice" data-k="SI"><b>Silver</b><span>Serial starts at S00001</span><br><span id="nx-SI"></span></button>
-      <button class="choice" data-k="SA"><b>Saree</b><span>Serial starts at SA00001</span><br><span id="nx-SA"></span></button>
+      <button class="choice" data-k="RE">
+        <b>Royal Enfield</b>
+        <div class="card-price">₹301 / token</div>
+        <span class="choice-serial">Serial starts at B00001</span>
+        <span class="choice-next" id="nx-RE"></span>
+      </button>
 
+      <button class="choice" data-k="SI">
+        <b>Silver</b>
+        <div class="card-price">₹201 / token</div>
+        <span class="choice-serial">Serial starts at S00001</span>
+        <span class="choice-next" id="nx-SI"></span>
+      </button>
+
+      <button class="choice" data-k="SA">
+        <b>Saree</b>
+        <div class="card-price">₹101 / token</div>
+        <span class="choice-serial">Serial starts at SA00001</span>
+        <span class="choice-next" id="nx-SA"></span>
+      </button>
     </div>
   </section>
 
@@ -127,43 +172,79 @@ th{background:#efe3c6}
     <div class="panel">
       <div class="tag" id="selTag"></div>
       <div class="next" id="selNext"></div>
-      <label for="name">Customer name</label>
-      <input id="name" type="text" autocomplete="off" maxlength="60">
-      <label for="mobile">Mobile number</label>
-      <input id="mobile" type="tel" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="10-digit number">
-      <label for="quantity">Number of tokens to issue in serial</label>
-      <div class="qty-row">
-        <button type="button" class="s qty-btn" id="qtyMinus">-</button>
-        <input id="quantity" type="number" min="1" max="100" value="1" inputmode="numeric" style="text-align:center;font-weight:700">
-        <button type="button" class="s qty-btn" id="qtyPlus">+</button>
-      </div>
-      <div class="qty-preview" id="qtyPreview"></div>
-      <label>Payment type</label>
+      
+      <div id="formInputs">
+        <label for="name">Customer Name</label>
+        <input id="name" type="text" autocomplete="off" maxlength="60" placeholder="Full name">
+        
+        <label for="mobile">Mobile Number</label>
+        <input id="mobile" type="tel" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="10-digit mobile number">
+        
+        <label for="quantity">Number of Tokens in Serial</label>
+        <div class="qty-row">
+          <button type="button" class="s qty-btn" id="qtyMinus">-</button>
+          <input id="quantity" type="number" min="1" max="100" value="1" inputmode="numeric" style="text-align:center;font-weight:700">
+          <button type="button" class="s qty-btn" id="qtyPlus">+</button>
+        </div>
+        <div class="qty-preview" id="qtyPreview"></div>
 
-      <div class="pay">
-        <label><input type="radio" name="pay" value="Cash"><span>Cash</span></label>
-        <label><input type="radio" name="pay" value="UPI"><span>UPI</span></label>
+        <label>Payment Method</label>
+        <div class="pay">
+          <label><input type="radio" name="pay" value="Cash"><span>Cash</span></label>
+          <label><input type="radio" name="pay" value="UPI"><span>UPI</span></label>
+        </div>
       </div>
+
       <div class="err" id="err"></div>
-      <div class="row">
-        <button class="p" id="saveBtn">Save &amp; print 2 tokens</button>
-        <button class="s" id="backBtn">Back</button>
+
+      <!-- Initial Action Row: Step 1 Print -->
+      <div class="row" id="formActionRow">
+        <button type="button" class="p" id="printFirstBtn">🖨️ Step 1: Print Token Slip(s)</button>
+        <button type="button" class="s" id="backBtn">Back</button>
+      </div>
+
+      <!-- Step 2: Confirmation Box (Displayed after Print) -->
+      <div id="saveConfirmBox" class="save-confirm-box hidden">
+        <div class="confirm-banner">
+          <div class="confirm-title">🖨️ Step 1 Done: Tokens Sent to Printer!</div>
+          <p class="confirm-desc">
+            Please verify the printed slips. <b>The token is NOT saved to the database yet!</b><br>
+            Click <b>"Confirm &amp; Save"</b> to permanently store this transaction and update serial numbers.
+          </p>
+          <div class="confirm-details" id="confirmDetails"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button type="button" class="p confirm-save-btn" id="confirmSaveBtn">💾 Step 2: Confirm &amp; Save to Database</button>
+          <button type="button" class="s" id="reprintBtn">🖨️ Re-Print</button>
+          <button type="button" class="s discard-btn" id="discardBtn">❌ Discard</button>
+        </div>
       </div>
     </div>
   </section>
 
   <section class="tools">
+    <div id="adminSummaryWrap" class="hidden">
+      <div class="admin-summary" id="adminSummary"></div>
+      <div class="counter-tabs" id="counterTabs">
+        <button class="tab-btn active" data-counter="all">All Counters (Combined)</button>
+        <button class="tab-btn" data-counter="counter1">Counter 1</button>
+        <button class="tab-btn" data-counter="counter2">Counter 2</button>
+        <button class="tab-btn" data-counter="counter3">Counter 3</button>
+        <button class="tab-btn" data-counter="admin">Admin / Main</button>
+      </div>
+    </div>
+
     <p class="counts" id="counts"></p>
+    
     <div class="row">
       <button class="s" id="xlsBtn">Download Excel</button>
-      <button class="s" id="viewBtn">View records</button>
-      <button class="s" id="cancelPromptBtn" style="color:#b00020;border-color:#b00020">Cancel token by Serial</button>
-      <button class="s" id="importBtn" style="color:#1b5e20;border-color:#1b5e20">Restore from Excel</button>
+      <button class="s" id="viewBtn">View Records</button>
+      <button class="s" id="cancelPromptBtn" style="color:var(--red);border-color:var(--red)">Cancel Token by Serial</button>
+      <button class="s hidden" id="importBtn" style="color:var(--green);border-color:var(--green)">Restore from Excel</button>
       <input type="file" id="importFileInput" accept=".xlsx" style="display:none">
     </div>
+
     <div id="storageNotice" style="font-family:Arial,sans-serif;font-size:12px;color:#6b5a4a;margin-top:10px"></div>
-
-
     <div class="tablewrap hidden" id="tableWrap"></div>
   </section>
 </main>
@@ -171,41 +252,80 @@ th{background:#efe3c6}
 <div id="printArea"></div>
 
 <script>
-var TYPES={RE:'Royal Enfield',SI:'Silver',SA:'Saree'};
-var current=null, busy=false;
+var TYPES = { RE: 'Royal Enfield', SI: 'Silver', SA: 'Saree' };
+var PRICES = { RE: 301, SI: 201, SA: 101 };
+var PREFIXES = { RE: 'B', SI: 'S', SA: 'SA' };
 
-function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-function two(n){return String(n).padStart(2,'0')}
-function stamp(d){
-  var h=d.getHours(),ap=h>=12?'PM':'AM';h=h%12||12;
-  return {date:two(d.getDate())+'/'+two(d.getMonth()+1)+'/'+d.getFullYear(),time:two(h)+':'+two(d.getMinutes())+':'+two(d.getSeconds())+' '+ap};
+var currentUser = null;
+var current = null;
+var counters = {};
+var activeCounterFilter = 'all';
+var pendingTokensBatch = null;
+var busy = false;
+
+// Preload the logo image into browser cache
+var logoImg = new Image();
+logoImg.src = '/logo.jpg';
+
+function esc(s){
+  return String(s || '').replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
 }
-function tick(){var s=stamp(new Date());document.getElementById('clock').textContent=s.date+'  |  '+s.time}
-setInterval(tick,1000);tick();
+
+function two(n){ return String(n).padStart(2, '0'); }
+
+function stamp(d){
+  var h = d.getHours(), ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return {
+    date: two(d.getDate()) + '/' + two(d.getMonth() + 1) + '/' + d.getFullYear(),
+    time: two(h) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()) + ' ' + ap
+  };
+}
+
+function tick(){
+  var s = stamp(new Date());
+  document.getElementById('clock').textContent = s.date + '  |  ' + s.time;
+}
+setInterval(tick, 1000);
+tick();
 
 function showLogin(msg){
   document.getElementById('loginSection').classList.remove('hidden');
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authBar').classList.add('hidden');
-  document.getElementById('loginPass').value='';
-  document.getElementById('loginErr').textContent=msg||'';
-  setTimeout(function(){document.getElementById('loginUser').focus()},100);
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginErr').textContent = msg || '';
+  setTimeout(function(){ document.getElementById('loginUser').focus(); }, 100);
 }
 
-function showApp(){
+function showApp(user){
+  currentUser = user;
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
   document.getElementById('authBar').classList.remove('hidden');
+
+  var roleIcon = user.role === 'admin' ? '👑 Administrator (All Counters)' : '👤 ' + (user.name || user.username);
+  document.getElementById('userBadge').textContent = roleIcon;
+
+  if(user.role === 'admin'){
+    document.getElementById('adminSummaryWrap').classList.remove('hidden');
+    document.getElementById('importBtn').classList.remove('hidden');
+  } else {
+    document.getElementById('adminSummaryWrap').classList.add('hidden');
+    document.getElementById('importBtn').classList.add('hidden');
+  }
   refresh();
 }
 
 function checkAuth(){
   fetch('/api/auth/status')
-    .then(function(r){return r.json()})
+    .then(function(r){ return r.json(); })
     .then(function(j){
       if(j.authenticated){
-        showApp();
-      }else{
+        showApp({ username: j.username, role: j.role, name: j.name, counter_name: j.counter_name });
+      } else {
         showLogin();
       }
     })
@@ -215,74 +335,96 @@ function checkAuth(){
 }
 
 function doLogin(){
-  var u=document.getElementById('loginUser').value.trim();
-  var p=document.getElementById('loginPass').value.trim();
-  var err=document.getElementById('loginErr');
-  if(!u||!p){err.textContent='Please enter both User ID and Password.';return}
-  err.textContent='';
-  fetch('/api/auth/login',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username:u,password:p})
+  var u = document.getElementById('loginUser').value.trim();
+  var p = document.getElementById('loginPass').value.trim();
+  var err = document.getElementById('loginErr');
+  if(!u || !p){
+    err.textContent = 'Please enter both User ID and Password.';
+    return;
+  }
+  err.textContent = '';
+  fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: u, password: p })
   })
   .then(function(r){
-    return r.json().catch(function(){return{}}).then(function(j){
-      if(!r.ok)throw new Error(j.error||'Invalid credentials');
+    return r.json().catch(function(){ return {}; }).then(function(j){
+      if(!r.ok) throw new Error(j.error || 'Invalid credentials');
       return j;
     });
   })
-  .then(function(){
-    showApp();
+  .then(function(res){
+    showApp({ username: res.username, role: res.role, name: res.name, counter_name: res.counter_name });
   })
   .catch(function(e){
-    err.textContent=e.message;
+    err.textContent = e.message;
   });
 }
 
-document.getElementById('loginBtn').onclick=doLogin;
-document.getElementById('loginPass').onkeydown=function(e){if(e.key==='Enter')doLogin()};
-document.getElementById('loginUser').onkeydown=function(e){if(e.key==='Enter')doLogin()};
+document.getElementById('loginBtn').onclick = doLogin;
+document.getElementById('loginPass').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
+document.getElementById('loginUser').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
 
-document.getElementById('logoutBtn').onclick=function(){
-  fetch('/api/auth/logout',{method:'POST'})
-    .then(function(){showLogin('Signed out successfully.')})
-    .catch(function(){showLogin()});
+document.getElementById('logoutBtn').onclick = function(){
+  fetch('/api/auth/logout', { method: 'POST' })
+    .then(function(){ showLogin('Signed out successfully.'); })
+    .catch(function(){ showLogin(); });
 };
 
-function api(path,opts){
-  return fetch(path,opts).then(function(r){
-    return r.json().catch(function(){return {}}).then(function(j){
-      if(r.status===401){
-        showLogin(j.error||'Session expired or signed in elsewhere.');
-        throw new Error(j.error||'Authentication required');
+function api(path, opts){
+  return fetch(path, opts).then(function(r){
+    return r.json().catch(function(){ return {}; }).then(function(j){
+      if(r.status === 401){
+        showLogin(j.error || 'Session expired. Please sign in again.');
+        throw new Error(j.error || 'Authentication required');
       }
-      if(!r.ok)throw new Error(j.error||'Server error ('+r.status+')');
+      if(!r.ok) throw new Error(j.error || ('Server error (' + r.status + ')'));
       return j;
     });
-  },function(){throw new Error('Cannot reach the server. Check that the backend is running.')});
-}
-
-var counters={};
-function refresh(){
-  return api('/api/counters').then(function(c){
-    counters=c;
-    var tot=0;
-    Object.keys(TYPES).forEach(function(k){
-      document.getElementById('nx-'+k).textContent='Next: '+c[k].next;
-      tot+=c[k].issued;
-    });
-    document.getElementById('counts').textContent='Tokens issued: Royal Enfield '+c.RE.issued+', Silver '+c.SI.issued+', Saree '+c.SA.issued+' (total '+tot+')';
-    if(!document.getElementById('tableWrap').classList.contains('hidden'))renderTable();
-  }).catch(function(e){
-    document.getElementById('counts').textContent=e.message;
+  }, function(){
+    throw new Error('Cannot connect to the server. Check your network connection.');
   });
 }
 
-var PREFIXES={RE:'B',SI:'S',SA:'SA'};
 function fmtSerial(prefix, n){
   return prefix + String(n).padStart(5, '0');
 }
 
+function refresh(){
+  return api('/api/counters').then(function(res){
+    counters = res.categories || {};
+    var cats = counters;
+    var tot = 0;
+    Object.keys(TYPES).forEach(function(k){
+      if(cats[k]){
+        document.getElementById('nx-' + k).textContent = 'Next: ' + cats[k].next;
+        tot += cats[k].issued;
+      }
+    });
+
+    if(res.currentUser && res.currentUser.role === 'admin' && res.counterBreakdown){
+      var b = res.counterBreakdown;
+      var sumHtml = '';
+      var totalRev = 0;
+      Object.keys(b).forEach(function(uk){
+        sumHtml += '<div class="summary-card"><b>' + esc(b[uk].name) + '</b>' + b[uk].count + ' tokens &bull; ₹' + b[uk].amount.toLocaleString('en-IN') + '</div>';
+        totalRev += b[uk].amount;
+      });
+      document.getElementById('adminSummary').innerHTML = sumHtml;
+      document.getElementById('counts').innerHTML = '<b>Combined Total:</b> ' + tot + ' tokens issued across all counters &bull; Total Collection: <b>₹' + totalRev.toLocaleString('en-IN') + '</b>';
+    } else {
+      var myStats = res.myStats || { count: 0, amount: 0 };
+      document.getElementById('counts').innerHTML = '<b>' + esc(currentUser.name || currentUser.username) + ':</b> ' + myStats.count + ' tokens issued &bull; Collection: <b>₹' + myStats.amount.toLocaleString('en-IN') + '</b>';
+    }
+
+    if(!document.getElementById('tableWrap').classList.contains('hidden')){
+      renderTable();
+    }
+  }).catch(function(e){
+    document.getElementById('counts').textContent = e.message;
+  });
+}
 
 function updateQtyPreview(){
   if(!current || !counters[current]) return;
@@ -297,105 +439,292 @@ function updateQtyPreview(){
   var endNo = startNo + q - 1;
   var startSerial = fmtSerial(pfx, startNo);
   var endSerial = fmtSerial(pfx, endNo);
+  var unitPrice = PRICES[current] || 0;
+  var totalPrice = unitPrice * q;
 
   var prevEl = document.getElementById('qtyPreview');
-  var saveEl = document.getElementById('saveBtn');
+  var btnEl = document.getElementById('printFirstBtn');
   if(q === 1){
-    prevEl.textContent = 'Token to issue: ' + startSerial;
-    saveEl.textContent = 'Save & print 2 tokens (Customer + Office copy)';
+    prevEl.textContent = 'Token to issue: ' + startSerial + '  |  Total: ₹' + totalPrice;
+    btnEl.textContent = '🖨️ Step 1: Print 2 Slips (Total: ₹' + totalPrice + ')';
   } else {
-    prevEl.textContent = 'Tokens in serial to issue: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)';
-    saveEl.textContent = 'Save & print ' + (q * 2) + ' tokens (' + q + ' pairs in serial)';
+    prevEl.textContent = 'Tokens: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)  |  Total: ₹' + totalPrice + ' (' + q + ' × ₹' + unitPrice + ')';
+    btnEl.textContent = '🖨️ Step 1: Print ' + (q * 2) + ' Slips (' + q + ' pairs &bull; Total: ₹' + totalPrice + ')';
   }
 }
 
 document.querySelectorAll('.choice').forEach(function(b){
-  b.onclick=function(){
-    current=b.dataset.k;
-    document.getElementById('selTag').textContent=TYPES[current];
-    document.getElementById('selNext').textContent=counters[current]?'Next serial begins at '+counters[current].next:'';
-    document.getElementById('quantity').value='1';
+  b.onclick = function(){
+    current = b.dataset.k;
+    var price = PRICES[current];
+    document.getElementById('selTag').textContent = TYPES[current] + ' — ₹' + price + ' per token';
+    document.getElementById('selNext').textContent = counters[current] ? 'Next serial begins at ' + counters[current].next : '';
+    document.getElementById('quantity').value = '1';
+    resetFormState();
     updateQtyPreview();
     document.getElementById('stepChoose').classList.add('hidden');
     document.getElementById('stepForm').classList.remove('hidden');
-    document.getElementById('err').textContent='';
+    document.getElementById('err').textContent = '';
     document.getElementById('name').focus();
   };
 });
+
+function resetFormState(){
+  document.getElementById('formActionRow').classList.remove('hidden');
+  document.getElementById('saveConfirmBox').classList.add('hidden');
+  document.getElementById('name').disabled = false;
+  document.getElementById('mobile').disabled = false;
+  document.getElementById('quantity').disabled = false;
+  document.getElementById('qtyMinus').disabled = false;
+  document.getElementById('qtyPlus').disabled = false;
+  document.querySelectorAll('input[name="pay"]').forEach(function(p){ p.disabled = false; });
+  pendingTokensBatch = null;
+}
+
 function toChoose(){
   document.getElementById('stepForm').classList.add('hidden');
   document.getElementById('stepChoose').classList.remove('hidden');
-  document.getElementById('name').value='';document.getElementById('mobile').value='';
-  document.getElementById('quantity').value='1';
-  document.querySelectorAll('input[name="pay"]').forEach(function(p){p.checked=false});
-  current=null;refresh();
-}
-document.getElementById('backBtn').onclick=toChoose;
-document.getElementById('mobile').oninput=function(){this.value=this.value.replace(/\D/g,'')};
-
-document.getElementById('qtyMinus').onclick=function(){
-  var el=document.getElementById('quantity');
-  var v=(parseInt(el.value,10)||1)-1;
-  if(v<1)v=1;
-  el.value=v;
-  updateQtyPreview();
-};
-document.getElementById('qtyPlus').onclick=function(){
-  var el=document.getElementById('quantity');
-  var v=(parseInt(el.value,10)||1)+1;
-  if(v>100)v=100;
-  el.value=v;
-  updateQtyPreview();
-};
-document.getElementById('quantity').oninput=updateQtyPreview;
-
-function tokenHTML(t,copy){
-  return '<div class="token"><div class="h">SVARA</div><div class="sub">2026 Lucky Draw</div>'+
-   '<div class="contact">Cell: +91 9848433020, +91 9885897093</div>'+
-   '<div class="cat">'+esc(t.type)+'</div><div class="no">'+esc(t.serial)+'</div>'+
-   '<div class="d">Name: '+esc(t.name)+'<br>Mobile: '+esc(t.mobile)+'<br>Payment: '+esc(t.payment)+'<br>Date: '+t.date+'<br>Time: '+t.time+'</div>'+
-   '<div class="cp">'+copy+'</div><div class="cut-spacer"></div></div>';
+  document.getElementById('name').value = '';
+  document.getElementById('mobile').value = '';
+  document.getElementById('quantity').value = '1';
+  document.querySelectorAll('input[name="pay"]').forEach(function(p){ p.checked = false; });
+  resetFormState();
+  current = null;
+  refresh();
 }
 
+document.getElementById('backBtn').onclick = toChoose;
+document.getElementById('mobile').oninput = function(){ this.value = this.value.replace(/\D/g, ''); };
 
-document.getElementById('saveBtn').onclick=function(){
-  if(busy)return;
-  var name=document.getElementById('name').value.trim();
-  var mobile=document.getElementById('mobile').value.trim();
-  var qty=parseInt(document.getElementById('quantity').value,10)||1;
-  var err=document.getElementById('err');
-  var payEl=document.querySelector('input[name="pay"]:checked');
-  if(!name){err.textContent='Enter the customer name.';return}
-  if(!/^\d{10}$/.test(mobile)){err.textContent='Enter a valid 10-digit mobile number.';return}
-  if(qty < 1 || qty > 100){err.textContent='Enter a valid number of tokens (1 to 100).';return}
-  if(!payEl){err.textContent='Select a payment type: Cash or UPI.';return}
-  err.textContent='';busy=true;this.disabled=true;var btn=this;
-  api('/api/tokens',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:current,name:name,mobile:mobile,payment:payEl.value,quantity:qty})})
-  .then(function(res){
-    var list = res.tokens || [res];
-    var html = '';
-    list.forEach(function(t){
-      html += tokenHTML(t,'Customer copy')+tokenHTML(t,'Office copy');
+document.getElementById('qtyMinus').onclick = function(){
+  var el = document.getElementById('quantity');
+  var v = (parseInt(el.value, 10) || 1) - 1;
+  if(v < 1) v = 1;
+  el.value = v;
+  updateQtyPreview();
+};
+
+document.getElementById('qtyPlus').onclick = function(){
+  var el = document.getElementById('quantity');
+  var v = (parseInt(el.value, 10) || 1) + 1;
+  if(v > 100) v = 100;
+  el.value = v;
+  updateQtyPreview();
+};
+document.getElementById('quantity').oninput = updateQtyPreview;
+
+function tokenHTML(t, copy){
+  return '<div class="token">' +
+    '<div class="token-header">' +
+      '<img src="/logo.jpg" class="token-logo" alt="Logo">' +
+      '<div class="token-header-text">' +
+        '<div class="h">SVARA</div>' +
+        '<div class="sub">2026 Lucky Draw</div>' +
+        '<div class="contact">Cell: +91 9848433020, +91 9885897093</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="cat">' + esc(t.type) + ' &mdash; ₹' + t.price + '</div>' +
+    '<div class="no">' + esc(t.serial) + '</div>' +
+    '<div class="d">' +
+      '<b>Price: ₹' + t.price + '</b><br>' +
+      'Name: ' + esc(t.name) + '<br>' +
+      'Mobile: ' + esc(t.mobile) + '<br>' +
+      'Payment: ' + esc(t.payment) + '<br>' +
+      'Counter: ' + esc(t.counter_name || 'Counter') + '<br>' +
+      'Date: ' + t.date + '<br>' +
+      'Time: ' + t.time +
+    '</div>' +
+    '<div class="cp">' + copy + '</div>' +
+    '<div class="cut-spacer"></div>' +
+  '</div>';
+}
+
+/* =========================================================
+   TWO-STEP FLOW:
+   Step 1: Print slips first without saving to DB.
+   Step 2: User verifies printer output & clicks "Confirm & Save".
+   ========================================================= */
+
+document.getElementById('printFirstBtn').onclick = function(){
+  var name = document.getElementById('name').value.trim();
+  var mobile = document.getElementById('mobile').value.trim();
+  var qty = parseInt(document.getElementById('quantity').value, 10) || 1;
+  var err = document.getElementById('err');
+  var payEl = document.querySelector('input[name="pay"]:checked');
+
+  if(!name){ err.textContent = 'Please enter the customer name.'; return; }
+  if(!/^\d{10}$/.test(mobile)){ err.textContent = 'Please enter a valid 10-digit mobile number.'; return; }
+  if(qty < 1 || qty > 100){ err.textContent = 'Please enter a quantity between 1 and 100.'; return; }
+  if(!payEl){ err.textContent = 'Please select a payment method: Cash or UPI.'; return; }
+  err.textContent = '';
+
+  var pfx = PREFIXES[current];
+  var nextStr = (counters[current] && counters[current].next) || (pfx + '00001');
+  var match = nextStr.match(/\d+$/);
+  var startNo = match ? parseInt(match[0], 10) : 1;
+  var endNo = startNo + qty - 1;
+  var sParts = stamp(new Date());
+  var unitPrice = PRICES[current] || 0;
+  var totalAmount = unitPrice * qty;
+
+  var slips = [];
+  var serialLabels = [];
+  for(var n = startNo; n <= endNo; n++){
+    var ser = fmtSerial(pfx, n);
+    serialLabels.push(ser);
+    slips.push({
+      serial: ser,
+      type: TYPES[current],
+      price: unitPrice,
+      name: name,
+      mobile: mobile,
+      payment: payEl.value,
+      counter_name: currentUser.name || currentUser.username,
+      date: sParts.date,
+      time: sParts.time
     });
-    document.getElementById('printArea').innerHTML=html;
-    toChoose();
-    setTimeout(function(){window.print()},150);
-  })
-  .catch(function(e){err.textContent=e.message})
-  .then(function(){busy=false;btn.disabled=false});
+  }
+
+  // Save pending batch in memory
+  pendingTokensBatch = {
+    type: current,
+    name: name,
+    mobile: mobile,
+    payment: payEl.value,
+    quantity: qty,
+    unitPrice: unitPrice,
+    totalAmount: totalAmount,
+    serials: serialLabels,
+    slips: slips
+  };
+
+  // Generate HTML for thermal printing (Customer + Office copy with auto-cut spacer)
+  var printHtml = '';
+  slips.forEach(function(t){
+    printHtml += tokenHTML(t, 'Customer copy') + tokenHTML(t, 'Office copy');
+  });
+  document.getElementById('printArea').innerHTML = printHtml;
+
+  // Lock inputs so they cannot be altered mid-step
+  document.getElementById('name').disabled = true;
+  document.getElementById('mobile').disabled = true;
+  document.getElementById('quantity').disabled = true;
+  document.getElementById('qtyMinus').disabled = true;
+  document.getElementById('qtyPlus').disabled = true;
+  document.querySelectorAll('input[name="pay"]').forEach(function(p){ p.disabled = true; });
+
+  // Reveal Step 2 Confirmation Box
+  document.getElementById('formActionRow').classList.add('hidden');
+  document.getElementById('saveConfirmBox').classList.remove('hidden');
+
+  var summaryText = '<b>Type:</b> ' + esc(TYPES[current]) + ' &bull; ' +
+    '<b>Tokens:</b> ' + (serialLabels.length === 1 ? serialLabels[0] : (serialLabels[0] + ' to ' + serialLabels[serialLabels.length - 1] + ' (' + qty + ' tokens)')) + ' &bull; ' +
+    '<b>Amount:</b> ₹' + totalAmount + ' (' + payEl.value + ') &bull; ' +
+    '<b>Customer:</b> ' + esc(name) + ' (' + esc(mobile) + ')';
+  document.getElementById('confirmDetails').innerHTML = summaryText;
+
+  // Trigger browser print dialog
+  setTimeout(function(){ window.print(); }, 120);
 };
 
+// Re-print button
+document.getElementById('reprintBtn').onclick = function(){
+  if(!pendingTokensBatch) return;
+  window.print();
+};
+
+// Discard button
+document.getElementById('discardBtn').onclick = function(){
+  if(!confirm('Discard this transaction?\n\nNo tokens will be saved to the database, and serial numbers will NOT be incremented.')) return;
+  toChoose();
+};
+
+// Step 2: Confirm & Save to Database
+document.getElementById('confirmSaveBtn').onclick = function(){
+  if(busy || !pendingTokensBatch) return;
+  busy = true;
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = 'Saving to Database...';
+
+  api('/api/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: pendingTokensBatch.type,
+      name: pendingTokensBatch.name,
+      mobile: pendingTokensBatch.mobile,
+      payment: pendingTokensBatch.payment,
+      quantity: pendingTokensBatch.quantity
+    })
+  })
+  .then(function(res){
+    var savedTokens = res.tokens || [res];
+    var firstSer = savedTokens[0].serial;
+    var lastSer = savedTokens[savedTokens.length - 1].serial;
+    var range = savedTokens.length === 1 ? firstSer : (firstSer + ' to ' + lastSer);
+    alert('✅ Transaction Confirmed & Saved!\n\nToken(s) ' + range + ' permanently stored in the PostgreSQL database and Excel.');
+    toChoose();
+  })
+  .catch(function(e){
+    alert('Error saving tokens: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '💾 Step 2: Confirm & Save to Database';
+  })
+  .then(function(){
+    busy = false;
+  });
+};
+
+/* =========================================================
+   RECORDS TABLE & ADMIN FILTERS
+   ========================================================= */
 
 function renderTable(){
-  api('/api/tokens').then(function(r){
-    if(!r.length){document.getElementById('tableWrap').innerHTML='<p class="counts">No records yet.</p>';return}
-    var h='<table><tr><th>Serial</th><th>Type</th><th>Name</th><th>Mobile</th><th>Payment</th><th>Date</th><th>Time</th><th>Action</th></tr>';
+  var url = '/api/tokens';
+  if(currentUser.role === 'admin' && activeCounterFilter && activeCounterFilter !== 'all'){
+    url += '?counter=' + encodeURIComponent(activeCounterFilter);
+  }
+
+  api(url).then(function(r){
+    var wrap = document.getElementById('tableWrap');
+    if(!r || !r.length){
+      wrap.innerHTML = '<p class="counts">No records found' + (activeCounterFilter !== 'all' ? ' for ' + activeCounterFilter : '') + '.</p>';
+      return;
+    }
+
+    var h = '<table><tr>' +
+      '<th>Serial</th>' +
+      '<th>Type</th>' +
+      '<th>Price</th>' +
+      '<th>Name</th>' +
+      '<th>Mobile</th>' +
+      '<th>Payment</th>' +
+      '<th>Counter</th>' +
+      '<th>Date</th>' +
+      '<th>Time</th>' +
+      '<th>Action</th>' +
+      '</tr>';
+
     r.forEach(function(x){
-      h+='<tr><td><b>'+esc(x.serial)+'</b></td><td>'+esc(x.type)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+esc(x.payment)+'</td><td>'+x.date+'</td><td>'+x.time+'</td><td><button class="del-btn" onclick="cancelToken(\''+esc(x.serial)+'\',\''+esc(x.name)+'\')">Cancel</button></td></tr>';
+      h += '<tr>' +
+        '<td><b>' + esc(x.serial) + '</b></td>' +
+        '<td>' + esc(x.type) + '</td>' +
+        '<td><b>₹' + esc(x.price) + '</b></td>' +
+        '<td>' + esc(x.name) + '</td>' +
+        '<td>' + esc(x.mobile) + '</td>' +
+        '<td>' + esc(x.payment) + '</td>' +
+        '<td>' + esc(x.counter_name || x.created_by) + '</td>' +
+        '<td>' + esc(x.date) + '</td>' +
+        '<td>' + esc(x.time) + '</td>' +
+        '<td><button class="del-btn" onclick="cancelToken(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\')">Cancel</button></td>' +
+      '</tr>';
     });
-    document.getElementById('tableWrap').innerHTML=h+'</table>';
-  }).catch(function(e){document.getElementById('tableWrap').innerHTML='<p class="counts">'+esc(e.message)+'</p>'});
+
+    wrap.innerHTML = h + '</table>';
+  }).catch(function(e){
+    document.getElementById('tableWrap').innerHTML = '<p class="counts">' + esc(e.message) + '</p>';
+  });
 }
 
 function cancelToken(serial, name){
@@ -403,6 +732,7 @@ function cancelToken(serial, name){
   if(name) msg += ' (' + name + ')';
   msg += '?\n\nThis will remove it immediately from both the database and the Excel file.';
   if(!confirm(msg)) return;
+
   api('/api/tokens/' + encodeURIComponent(serial), { method: 'DELETE' })
     .then(function(res){
       alert(res.message || ('Token ' + serial + ' cancelled successfully.'));
@@ -414,19 +744,34 @@ function cancelToken(serial, name){
 }
 
 document.getElementById('cancelPromptBtn').onclick = function(){
-  var s = prompt('Enter Token Serial to cancel and delete (e.g. B001, S005, SA002):');
+  var s = prompt('Enter Token Serial to cancel and delete (e.g. B00001, S00005, SA00002):');
   if(!s || !s.trim()) return;
   cancelToken(s.trim().toUpperCase());
 };
 
-document.getElementById('viewBtn').onclick=function(){
-  var w=document.getElementById('tableWrap');
+document.getElementById('viewBtn').onclick = function(){
+  var w = document.getElementById('tableWrap');
   w.classList.toggle('hidden');
-  this.textContent=w.classList.contains('hidden')?'View records':'Hide records';
-  if(!w.classList.contains('hidden'))renderTable();
+  this.textContent = w.classList.contains('hidden') ? 'View Records' : 'Hide Records';
+  if(!w.classList.contains('hidden')) renderTable();
 };
 
-document.getElementById('xlsBtn').onclick=function(){window.location.href='/api/export'};
+document.querySelectorAll('.tab-btn').forEach(function(btn){
+  btn.onclick = function(){
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    activeCounterFilter = btn.dataset.counter || 'all';
+    renderTable();
+  };
+});
+
+document.getElementById('xlsBtn').onclick = function(){
+  var url = '/api/export';
+  if(currentUser && currentUser.role === 'admin' && activeCounterFilter && activeCounterFilter !== 'all'){
+    url += '?counter=' + encodeURIComponent(activeCounterFilter);
+  }
+  window.location.href = url;
+};
 
 document.getElementById('importBtn').onclick = function(){
   document.getElementById('importFileInput').click();
@@ -471,9 +816,9 @@ function checkStorageStatus(){
       var el = document.getElementById('storageNotice');
       if(el){
         if(j.persistent){
-          el.innerHTML = '<span style="color:#1b5e20;font-weight:700">&#x25CF; Storage: PostgreSQL (Persistent Across All Deploys)</span>';
+          el.innerHTML = '<span style="color:var(--green);font-weight:700">&#x25CF; Storage: PostgreSQL (Persistent Across All Deploys)</span>';
         } else {
-          el.innerHTML = '<span style="color:#b00020;font-weight:700">&#x25CF; Storage: Temporary Container Disk</span> &mdash; Add <code>DATABASE_URL</code> in Render Environment to persist forever without resets.';
+          el.innerHTML = '<span style="color:var(--red);font-weight:700">&#x25CF; Storage: Temporary Container Disk</span> &mdash; Add <code>DATABASE_URL</code> in Render Environment to persist forever without resets.';
         }
       }
     })
@@ -482,8 +827,6 @@ function checkStorageStatus(){
 
 checkAuth();
 checkStorageStatus();
-
-
 </script>
 </body>
 </html>

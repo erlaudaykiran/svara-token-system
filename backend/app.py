@@ -1,15 +1,13 @@
 """
 SVARA 2026 Lucky Draw - token printing backend.
 
-Flask + SQLite / PostgreSQL. Serves the frontend and a JSON API:
-  POST   /api/auth/login    authenticate staff (single user & session)
-  POST   /api/auth/logout   end active session
-  GET    /api/auth/status   check if current user is logged in
-  GET    /api/counters      next serial + issued count per category
-  POST   /api/tokens        create a batch of tokens in serial sequence
-  DELETE /api/tokens/<id>   cancel and delete a token
-  GET    /api/tokens        list all tokens (newest first)
-  GET    /api/export        download all tokens as an .xlsx file
+Flask + SQLite / PostgreSQL.
+Multi-User Counter Management & Secure Token Generation:
+  - Administrator (admin): views and exports all tokens combined + per counter
+  - 3 Independent Counters (counter1, counter2, counter3): isolated logins & data
+  - Dynamic Pricing: Royal Enfield ₹301, Silver ₹201, Saree ₹101
+  - Two-Step Flow: Print first -> Commit & Save to PostgreSQL / Database only on confirmation
+  - Thermal Printer Auto-Cut & Offline-Safe Logo Header
 """
 import io
 import os
@@ -20,14 +18,16 @@ from datetime import datetime, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    from backports.zoneinfo import ZoneInfo
+    try:
+        from backports.zoneinfo import ZoneInfo
+    except ImportError:
+        ZoneInfo = None
 from functools import wraps
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 import openpyxl
 from openpyxl import Workbook
-
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 # Database Configuration:
@@ -44,9 +44,43 @@ FRONTEND = os.path.join(ROOT, "frontend")
 EXPORT_DIR = os.path.join(ROOT, "exports")
 EXPORT_FILE = os.path.join(EXPORT_DIR, "SVARA_2026_Tokens.xlsx")
 
-AUTH_USER = os.environ.get("SVARA_USER", "admin")
-AUTH_PASS = os.environ.get("SVARA_PASSWORD", "svara@2026")
 TZ_NAME = os.environ.get("SVARA_TZ", "Asia/Kolkata")
+
+# Token Prices
+PRICES = {
+    "RE": 301,  # Royal Enfield
+    "SI": 201,  # Silver
+    "SA": 101   # Saree
+}
+
+# User accounts configuration:
+# 1 Admin (handles all counters) + 3 Separate Counter users with independent credentials
+USERS = {
+    "admin": {
+        "password": os.environ.get("ADMIN_PASSWORD", os.environ.get("SVARA_PASSWORD", "admin@svara2026")),
+        "role": "admin",
+        "name": "Administrator",
+        "counter_name": "Main / All Counters"
+    },
+    "counter1": {
+        "password": os.environ.get("COUNTER1_PASSWORD", "counter1@2026"),
+        "role": "counter",
+        "name": "Counter 1",
+        "counter_name": "Counter 1"
+    },
+    "counter2": {
+        "password": os.environ.get("COUNTER2_PASSWORD", "counter2@2026"),
+        "role": "counter",
+        "name": "Counter 2",
+        "counter_name": "Counter 2"
+    },
+    "counter3": {
+        "password": os.environ.get("COUNTER3_PASSWORD", "counter3@2026"),
+        "role": "counter",
+        "name": "Counter 3",
+        "counter_name": "Counter 3"
+    }
+}
 
 app = Flask(__name__, static_folder=None)
 app.secret_key = os.environ.get("SECRET_KEY", "svara-token-system-secret-key-2026")
@@ -79,16 +113,22 @@ class DBWrapper:
 
 
 def connect():
-    if DATABASE_URL:
-        import psycopg2
-        import psycopg2.extras
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        conn.autocommit = False
-        return DBWrapper(conn, is_pg=True)
-    else:
-        conn = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
-        conn.row_factory = sqlite3.Row
-        return DBWrapper(conn, is_pg=False)
+    url = os.environ.get("DATABASE_URL")
+    if url and url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    if url:
+        try:
+            import psycopg2
+            import psycopg2.extras
+            conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+            conn.autocommit = False
+            return DBWrapper(conn, is_pg=True)
+        except Exception as e:
+            print(f"[WARN] Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
+
+    conn = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    return DBWrapper(conn, is_pg=False)
 
 
 def init_db():
@@ -118,18 +158,29 @@ def init_db():
                     serial        VARCHAR(20) NOT NULL UNIQUE,
                     type_key      VARCHAR(10) NOT NULL REFERENCES counters(type_key),
                     token_type    VARCHAR(50) NOT NULL,
+                    price         INTEGER NOT NULL DEFAULT 0,
                     name          VARCHAR(100) NOT NULL,
                     mobile        VARCHAR(20) NOT NULL,
                     payment       VARCHAR(20) NOT NULL CHECK (payment IN ('Cash', 'UPI')),
+                    created_by    VARCHAR(50) NOT NULL DEFAULT 'admin',
+                    counter_name  VARCHAR(50) NOT NULL DEFAULT 'Main Counter',
                     created_date  VARCHAR(20) NOT NULL,
                     created_time  VARCHAR(20) NOT NULL,
                     created_at    VARCHAR(40) NOT NULL
                 );
             """)
             db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_type ON tokens(type_key);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(created_by);")
+
+            # Safe column additions if table was created in an earlier build
+            db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS price INTEGER NOT NULL DEFAULT 0;")
+            db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS created_by VARCHAR(50) NOT NULL DEFAULT 'admin';")
+            db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS counter_name VARCHAR(50) NOT NULL DEFAULT 'Main Counter';")
+
+            # Active sessions per user ID for concurrent logins
             db.execute("""
                 CREATE TABLE IF NOT EXISTS active_sessions (
-                    id            INTEGER PRIMARY KEY CHECK (id = 1),
+                    user_id       VARCHAR(50) PRIMARY KEY,
                     session_token TEXT NOT NULL,
                     logged_in_at  TEXT NOT NULL
                 );
@@ -138,8 +189,34 @@ def init_db():
         else:
             with open(os.path.join(ROOT, "database", "schema.sql"), encoding="utf-8") as f:
                 db.conn.executescript(f.read())
+
+            # Migrations for SQLite if upgraded from earlier versions
+            cur = db.execute("PRAGMA table_info(tokens)")
+            cols = [r["name"] for r in cur.fetchall()]
+            if "price" not in cols:
+                db.execute("ALTER TABLE tokens ADD COLUMN price INTEGER NOT NULL DEFAULT 0")
+            if "created_by" not in cols:
+                db.execute("ALTER TABLE tokens ADD COLUMN created_by TEXT NOT NULL DEFAULT 'admin'")
+            if "counter_name" not in cols:
+                db.execute("ALTER TABLE tokens ADD COLUMN counter_name TEXT NOT NULL DEFAULT 'Main Counter'")
+
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(created_by)")
+
+            cur_s = db.execute("PRAGMA table_info(active_sessions)")
+            s_rows = cur_s.fetchall()
+            s_cols = [r["name"] for r in s_rows]
+            if not s_rows or "user_id" not in s_cols:
+                db.execute("DROP TABLE IF EXISTS active_sessions")
+                db.execute("""
+                    CREATE TABLE active_sessions (
+                        user_id       TEXT PRIMARY KEY,
+                        session_token TEXT NOT NULL,
+                        logged_in_at  TEXT NOT NULL
+                    )
+                """)
     finally:
         db.close()
+
 
 
 def get_tz():
@@ -154,15 +231,48 @@ def now_parts():
     return d.strftime("%d/%m/%Y"), d.strftime("%I:%M:%S %p"), d.isoformat(timespec="seconds")
 
 
-def is_authenticated():
+def authenticate_user(username, password):
+    user_key = username.strip().lower()
+    custom_admin = os.environ.get("SVARA_USER", "").strip().lower()
+    if custom_admin and user_key == custom_admin:
+        user_key = "admin"
+
+    if user_key not in USERS:
+        return None
+
+    cfg = USERS[user_key]
+    if secrets.compare_digest(password, cfg["password"]):
+        return {
+            "username": user_key,
+            "role": cfg["role"],
+            "name": cfg["name"],
+            "counter_name": cfg["counter_name"]
+        }
+    return None
+
+
+def get_current_user():
     token = session.get("token")
-    if not token:
-        return False
+    username = session.get("user")
+    if not token or not username:
+        return None
+    username = username.strip().lower()
+    if username not in USERS:
+        return None
+
     db = connect()
     try:
-        cur = db.execute("SELECT session_token FROM active_sessions WHERE id = 1")
+        cur = db.execute("SELECT session_token FROM active_sessions WHERE user_id = ?", (username,))
         row = cur.fetchone()
-        return bool(row and secrets.compare_digest(row["session_token"], token))
+        if row and secrets.compare_digest(row["session_token"], token):
+            cfg = USERS[username]
+            return {
+                "username": username,
+                "role": cfg["role"],
+                "name": cfg["name"],
+                "counter_name": cfg["counter_name"]
+            }
+        return None
     finally:
         db.close()
 
@@ -170,9 +280,10 @@ def is_authenticated():
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not is_authenticated():
+        user = get_current_user()
+        if not user:
             return jsonify(error="Authentication required. Please sign in.", auth=False), 401
-        return f(*args, **kwargs)
+        return f(user, *args, **kwargs)
     return decorated
 
 
@@ -180,33 +291,74 @@ def fmt_serial(prefix, n):
     return f"{prefix}{n:05d}"
 
 
+COLUMNS = ["Token No", "Type", "Price (₹)", "Name", "Mobile", "Payment", "Date", "Time", "Issued By", "Counter"]
 
-COLUMNS = ["Token No", "Type", "Name", "Mobile", "Payment", "Date", "Time"]
+
+def row_val(r, key, default=None):
+    if r is None:
+        return default
+    if isinstance(r, dict):
+        return r.get(key, default)
+    try:
+        val = r[key]
+        return val if val is not None else default
+    except (IndexError, KeyError):
+        return default
 
 
-def build_workbook(rows):
+def build_workbook(rows, title="Tokens"):
     wb = Workbook()
     ws = wb.active
-    ws.title = "Tokens"
+    ws.title = title[:31]
     ws.append(COLUMNS)
     for c in range(1, len(COLUMNS) + 1):
         cell = ws.cell(row=1, column=c)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="7A1424")
+        cell.alignment = Alignment(horizontal="center")
+
+    total_amount = 0
     for r in rows:
-        ws.append([r["serial"], r["token_type"], r["name"], r["mobile"],
-                   r["payment"], r["created_date"], r["created_time"]])
-    for i, w in enumerate([11, 16, 26, 14, 10, 12, 13], start=1):
+        price_val = row_val(r, "price")
+        if price_val is None:
+            price_val = PRICES.get(row_val(r, "type_key"), 0)
+        total_amount += int(price_val)
+        ws.append([
+            row_val(r, "serial", ""),
+            row_val(r, "token_type", ""),
+            int(price_val),
+            row_val(r, "name", ""),
+            row_val(r, "mobile", ""),
+            row_val(r, "payment", ""),
+            row_val(r, "created_date", ""),
+            row_val(r, "created_time", ""),
+            row_val(r, "created_by", "admin"),
+            row_val(r, "counter_name", "Counter")
+        ])
+
+    # Summary row
+    summary_row = len(rows) + 2
+    ws.cell(row=summary_row, column=2, value="TOTAL:").font = Font(bold=True)
+    ws.cell(row=summary_row, column=3, value=total_amount).font = Font(bold=True)
+    ws.cell(row=summary_row, column=1, value=f"{len(rows)} Tokens").font = Font(bold=True)
+
+    col_widths = [12, 16, 11, 26, 14, 10, 12, 13, 14, 16]
+    for i, w in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    for row in ws.iter_rows(min_row=2, min_col=4, max_col=4):
+    for row in ws.iter_rows(min_row=2, min_col=5, max_col=5):
         row[0].number_format = "@"
     ws.freeze_panes = "A2"
     return wb
 
 
-def all_rows(db, newest_first=False):
+def all_rows(db, user=None, counter_filter=None, newest_first=False):
     order = "DESC" if newest_first else "ASC"
-    cur = db.execute(f"SELECT * FROM tokens ORDER BY id {order}")
+    if user and user["role"] != "admin":
+        cur = db.execute(f"SELECT * FROM tokens WHERE LOWER(created_by) = ? ORDER BY id {order}", (user["username"].lower(),))
+    elif counter_filter and counter_filter != "all":
+        cur = db.execute(f"SELECT * FROM tokens WHERE LOWER(created_by) = ? ORDER BY id {order}", (counter_filter.lower(),))
+    else:
+        cur = db.execute(f"SELECT * FROM tokens ORDER BY id {order}")
     return cur.fetchall()
 
 
@@ -218,9 +370,23 @@ def refresh_excel_file(db):
 
 
 def token_json(r):
-    return {"serial": r["serial"], "type": r["token_type"], "name": r["name"],
-            "mobile": r["mobile"], "payment": r["payment"],
-            "date": r["created_date"], "time": r["created_time"]}
+    price_val = row_val(r, "price")
+    if price_val is None:
+        price_val = PRICES.get(row_val(r, "type_key"), 0)
+    return {
+        "id": row_val(r, "id"),
+        "serial": row_val(r, "serial", ""),
+        "type": row_val(r, "token_type", ""),
+        "price": int(price_val),
+        "name": row_val(r, "name", ""),
+        "mobile": row_val(r, "mobile", ""),
+        "payment": row_val(r, "payment", ""),
+        "created_by": row_val(r, "created_by", "admin"),
+        "counter_name": row_val(r, "counter_name", "Counter"),
+        "date": row_val(r, "created_date", ""),
+        "time": row_val(r, "created_time", "")
+    }
+
 
 
 @app.post("/api/auth/login")
@@ -229,33 +395,48 @@ def login():
     username = str(data.get("username", "")).strip()
     password = str(data.get("password", "")).strip()
 
-    if not (secrets.compare_digest(username, AUTH_USER) and secrets.compare_digest(password, AUTH_PASS)):
+    user = authenticate_user(username, password)
+    if not user:
         return jsonify(error="Invalid User ID or Password."), 401
 
     token = secrets.token_hex(24)
     now_iso = datetime.now().isoformat()
     db = connect()
     try:
-        db.execute(
-            "INSERT INTO active_sessions (id, session_token, logged_in_at) VALUES (1, ?, ?) "
-            "ON CONFLICT (id) DO UPDATE SET session_token = EXCLUDED.session_token, logged_in_at = EXCLUDED.logged_in_at",
-            (token, now_iso)
-        )
+        if db.is_pg:
+            db.execute(
+                "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (user_id) DO UPDATE SET session_token = EXCLUDED.session_token, logged_in_at = EXCLUDED.logged_in_at",
+                (user["username"], token, now_iso)
+            )
+        else:
+            db.execute(
+                "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (user_id) DO UPDATE SET session_token = excluded.session_token, logged_in_at = excluded.logged_in_at",
+                (user["username"], token, now_iso)
+            )
         db.commit()
     finally:
         db.close()
 
     session["token"] = token
-    return jsonify(success=True, user=AUTH_USER)
+    session["user"] = user["username"]
+    return jsonify(
+        success=True,
+        username=user["username"],
+        role=user["role"],
+        name=user["name"],
+        counter_name=user["counter_name"]
+    )
 
 
 @app.post("/api/auth/logout")
 def logout():
-    token = session.get("token")
-    if token:
+    user = get_current_user()
+    if user:
         db = connect()
         try:
-            db.execute("DELETE FROM active_sessions WHERE id = 1 AND session_token = ?", (token,))
+            db.execute("DELETE FROM active_sessions WHERE user_id = ?", (user["username"],))
             db.commit()
         finally:
             db.close()
@@ -265,39 +446,89 @@ def logout():
 
 @app.get("/api/auth/status")
 def auth_status():
-    if is_authenticated():
-        return jsonify(authenticated=True, user=AUTH_USER)
+    user = get_current_user()
+    if user:
+        return jsonify(
+            authenticated=True,
+            username=user["username"],
+            role=user["role"],
+            name=user["name"],
+            counter_name=user["counter_name"]
+        )
     return jsonify(authenticated=False)
 
 
 @app.get("/api/counters")
 @require_auth
-def counters():
+def counters(user):
     db = connect()
     try:
-        out = {}
+        categories = {}
         for c in db.execute("SELECT * FROM counters").fetchall():
-            count_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key = ?", (c["type_key"],))
+            tk = c["type_key"]
+            count_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key = ?", (tk,))
             count_row = count_cur.fetchone()
-            if isinstance(count_row, dict):
-                count = list(count_row.values())[0]
-            else:
-                count = count_row[0]
-            out[c["type_key"]] = {
+            tot_count = list(count_row.values())[0] if isinstance(count_row, dict) else count_row[0]
+
+            user_count_cur = db.execute(
+                "SELECT COUNT(*) FROM tokens WHERE type_key = ? AND LOWER(created_by) = ?",
+                (tk, user["username"].lower())
+            )
+            user_count_row = user_count_cur.fetchone()
+            user_count = list(user_count_row.values())[0] if isinstance(user_count_row, dict) else user_count_row[0]
+
+            categories[tk] = {
                 "label": c["label"],
-                "issued": count,
+                "price": PRICES.get(tk, 0),
+                "issued": tot_count,
+                "user_issued": user_count,
                 "next": fmt_serial(c["prefix"], c["last_no"] + 1)
             }
+
+        # Breakdown stats for admin
+        counter_breakdown = {}
+        if user["role"] == "admin":
+            for ukey in USERS:
+                c_cur = db.execute("SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ?", (ukey,))
+                c_row = c_cur.fetchone()
+                if isinstance(c_row, dict):
+                    vals = list(c_row.values())
+                    cnt, amt = vals[0], vals[1]
+                else:
+                    cnt, amt = c_row[0], c_row[1]
+                counter_breakdown[ukey] = {
+                    "name": USERS[ukey]["name"],
+                    "count": cnt,
+                    "amount": int(amt)
+                }
+
+        user_summary_cur = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ?",
+            (user["username"].lower(),)
+        )
+        user_sum_row = user_summary_cur.fetchone()
+        if isinstance(user_sum_row, dict):
+            u_vals = list(user_sum_row.values())
+            my_cnt, my_amt = u_vals[0], u_vals[1]
+        else:
+            my_cnt, my_amt = user_sum_row[0], user_sum_row[1]
+
     finally:
         db.close()
-    return jsonify(out)
+
+    return jsonify({
+        "categories": categories,
+        "currentUser": user,
+        "myStats": {"count": my_cnt, "amount": int(my_amt)},
+        "counterBreakdown": counter_breakdown if user["role"] == "admin" else None
+    })
 
 
 @app.post("/api/tokens")
 @require_auth
-def create_token():
+def create_token(user):
     data = request.get_json(silent=True) or {}
-    type_key = str(data.get("type", "")).strip()
+    type_key = str(data.get("type", "")).strip().upper()
     name = re.sub(r"\s+", " ", str(data.get("name", ""))).strip()
     mobile = str(data.get("mobile", "")).strip()
     payment = str(data.get("payment", "")).strip()
@@ -329,6 +560,7 @@ def create_token():
             db.rollback()
             return jsonify(error="Unknown token type."), 400
 
+        unit_price = PRICES.get(type_key, 0)
         start_no = c["last_no"]
         end_no = start_no + quantity
         date, time_, iso = now_parts()
@@ -337,13 +569,23 @@ def create_token():
         for n in range(start_no + 1, end_no + 1):
             serial = fmt_serial(c["prefix"], n)
             db.execute(
-                "INSERT INTO tokens (serial, type_key, token_type, name, mobile, payment,"
-                " created_date, created_time, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (serial, type_key, c["label"], name, mobile, payment, date, time_, iso))
+                "INSERT INTO tokens (serial, type_key, token_type, price, name, mobile, payment,"
+                " created_by, counter_name, created_date, created_time, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (serial, type_key, c["label"], unit_price, name, mobile, payment,
+                 user["username"], user["counter_name"], date, time_, iso)
+            )
             created_tokens.append({
-                "serial": serial, "type": c["label"], "name": name,
-                "mobile": mobile, "payment": payment,
-                "date": date, "time": time_
+                "serial": serial,
+                "type": c["label"],
+                "price": unit_price,
+                "name": name,
+                "mobile": mobile,
+                "payment": payment,
+                "created_by": user["username"],
+                "counter_name": user["counter_name"],
+                "date": date,
+                "time": time_
             })
 
         db.execute("UPDATE counters SET last_no = ? WHERE type_key = ?", (end_no, type_key))
@@ -358,13 +600,17 @@ def create_token():
     res = {
         "tokens": created_tokens,
         "count": len(created_tokens),
+        "total_amount": unit_price * len(created_tokens),
         "first": created_tokens[0]["serial"],
         "last": created_tokens[-1]["serial"],
         "serial": created_tokens[0]["serial"],
         "type": created_tokens[0]["type"],
+        "price": unit_price,
         "name": created_tokens[0]["name"],
         "mobile": created_tokens[0]["mobile"],
         "payment": created_tokens[0]["payment"],
+        "created_by": user["username"],
+        "counter_name": user["counter_name"],
         "date": created_tokens[0]["date"],
         "time": created_tokens[0]["time"],
     }
@@ -373,23 +619,30 @@ def create_token():
 
 @app.get("/api/tokens")
 @require_auth
-def list_tokens():
+def list_tokens(user):
+    counter_filter = request.args.get("counter", "").strip().lower()
     db = connect()
     try:
-        return jsonify([token_json(r) for r in all_rows(db, newest_first=True)])
+        rows = all_rows(db, user=user, counter_filter=counter_filter, newest_first=True)
+        return jsonify([token_json(r) for r in rows])
     finally:
         db.close()
 
 
 @app.delete("/api/tokens/<serial>")
 @require_auth
-def delete_token(serial):
+def delete_token(user, serial):
     serial = str(serial).strip().upper()
     db = connect()
     try:
         row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
         if not row:
             return jsonify(error=f"Token {serial} was not found."), 404
+
+        creator = row_val(row, "created_by", "admin")
+        if user["role"] != "admin" and creator.lower() != user["username"].lower():
+            return jsonify(error="Permission denied: You can only cancel tokens issued by your counter."), 403
+
         db.execute("DELETE FROM tokens WHERE UPPER(serial) = ?", (serial,))
         db.commit()
         refresh_excel_file(db)
@@ -413,7 +666,10 @@ def system_status():
 
 @app.post("/api/import")
 @require_auth
-def import_excel():
+def import_excel(user):
+    if user["role"] != "admin":
+        return jsonify(error="Only Administrator can restore from Excel."), 403
+
     file = request.files.get("file")
     if not file or not (file.filename.endswith(".xlsx") or file.filename.endswith(".XLSX")):
         return jsonify(error="Please upload a valid .xlsx Excel file."), 400
@@ -438,12 +694,33 @@ def import_excel():
             if not row or not row[0]:
                 continue
             serial = str(row[0]).strip().upper()
+            if not (serial.startswith("B") or serial.startswith("S") or serial.startswith("SA")):
+                continue
+
             token_type = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-            name = str(row[2]).strip() if len(row) > 2 and row[2] else ""
-            mobile = str(row[3]).strip() if len(row) > 3 and row[3] else ""
-            payment = str(row[4]).strip() if len(row) > 4 and row[4] else "Cash"
-            c_date = str(row[5]).strip() if len(row) > 5 and row[5] else ""
-            c_time = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+            
+            # Check if row has Price column (format with 10 columns vs legacy 7 columns)
+            if len(row) >= 10:
+                try:
+                    price = int(row[2]) if row[2] else 0
+                except (ValueError, TypeError):
+                    price = 0
+                name = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+                mobile = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+                payment = str(row[5]).strip() if len(row) > 5 and row[5] else "Cash"
+                c_date = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+                c_time = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+                c_user = str(row[8]).strip() if len(row) > 8 and row[8] else "admin"
+                c_name = str(row[9]).strip() if len(row) > 9 and row[9] else "Counter"
+            else:
+                name = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+                mobile = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+                payment = str(row[4]).strip() if len(row) > 4 and row[4] else "Cash"
+                c_date = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+                c_time = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+                c_user = "admin"
+                c_name = "Main Counter"
+                price = 0
 
             if serial.startswith("SA"):
                 type_key = "SA"
@@ -453,6 +730,9 @@ def import_excel():
                 type_key = "RE"
             else:
                 continue
+
+            if not price:
+                price = PRICES.get(type_key, 0)
 
             m = re.search(r"\d+", serial)
             if m:
@@ -466,15 +746,15 @@ def import_excel():
             now_iso = datetime.now().isoformat()
             if db.is_pg:
                 db.execute("""
-                    INSERT INTO tokens (serial, type_key, token_type, name, mobile, payment, created_date, created_time, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO tokens (serial, type_key, token_type, price, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (serial) DO NOTHING
-                """, (serial, type_key, token_type, name, mobile, payment, c_date, c_time, now_iso))
+                """, (serial, type_key, token_type, price, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
             else:
                 db.execute("""
-                    INSERT OR IGNORE INTO tokens (serial, type_key, token_type, name, mobile, payment, created_date, created_time, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (serial, type_key, token_type, name, mobile, payment, c_date, c_time, now_iso))
+                    INSERT OR IGNORE INTO tokens (serial, type_key, token_type, price, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (serial, type_key, token_type, price, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
             imported += 1
 
         for tk, max_n in max_nums.items():
@@ -494,18 +774,37 @@ def import_excel():
 
 @app.get("/api/export")
 @require_auth
-def export_excel():
-
+def export_excel(user):
+    counter_filter = request.args.get("counter", "").strip().lower()
     db = connect()
     try:
-        wb = build_workbook(all_rows(db))
+        rows = all_rows(db, user=user, counter_filter=counter_filter, newest_first=False)
+        sheet_title = "Tokens"
+        if user["role"] == "admin":
+            if counter_filter and counter_filter != "all":
+                file_name = f"SVARA_2026_Tokens_{counter_filter.capitalize()}.xlsx"
+                sheet_title = f"{counter_filter.capitalize()} Tokens"
+            else:
+                file_name = "SVARA_2026_Tokens_All.xlsx"
+                sheet_title = "All Counters"
+        else:
+            file_name = f"SVARA_2026_Tokens_{user['username'].capitalize()}.xlsx"
+            sheet_title = f"{user['name']} Tokens"
+
+        wb = build_workbook(rows, title=sheet_title)
     finally:
         db.close()
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return send_file(buf, as_attachment=True, download_name="SVARA_2026_Tokens.xlsx",
+    return send_file(buf, as_attachment=True, download_name=file_name,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/logo.jpg")
+def serve_logo():
+    return send_from_directory(FRONTEND, "logo.jpg", mimetype="image/jpeg")
 
 
 @app.get("/")

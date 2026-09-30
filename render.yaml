@@ -15,10 +15,18 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: ADMIN_PASSWORD
+        value: admin@svara2026
+      - key: COUNTER1_PASSWORD
+        value: counter1@2026
+      - key: COUNTER2_PASSWORD
+        value: counter2@2026
+      - key: COUNTER3_PASSWORD
+        value: counter3@2026
       - key: SVARA_USER
         value: admin
       - key: SVARA_PASSWORD
-        value: svara@2026
+        value: admin@svara2026
       - key: SVARA_TZ
         value: Asia/Kolkata
       - key: DATABASE_URL
