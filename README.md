@@ -2,7 +2,9 @@
 
 Frontend + backend + database. Tokens for Royal Enfield (B001...), Silver (S001...)
 and Saree (SA001...). Each entry stores name, mobile and payment type (Cash / UPI),
-then prints 2 tokens (Customer copy + Office copy) with the server date and time.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/erlaudaykiran/svara-token-system)
+
 
 ## Folders
     frontend/   index.html          the counter screen (HTML/CSS/JS, no build step)
