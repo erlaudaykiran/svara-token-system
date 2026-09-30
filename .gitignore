@@ -1,0 +1,23 @@
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Database & exports
+database/svara.db
+database/svara.db-journal
+database/svara.db-wal
+database/svara.db-shm
+exports/*.xlsx
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

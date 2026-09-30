@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVARA Token Printing</title>
+<style>
+:root{--bg:#f6efe2;--ink:#2a1216;--maroon:#7a1424;--gold:#b98a2e;--card:#fffaf0;--line:#dccfb4}
+*{box-sizing:border-box}
+body{margin:0;font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--ink);min-height:100vh}
+header{background:var(--maroon);color:#f7e6b8;padding:18px 20px;text-align:center}
+header h1{margin:0;font-size:34px;letter-spacing:.35em;font-weight:700;padding-left:.35em}
+header p{margin:4px 0 0;font-size:15px}
+#clock{font-size:13px;opacity:.85;margin-top:6px;font-family:Arial,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+h2{font-size:22px;margin:0 0 16px}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.choice{background:var(--card);border:2px solid var(--line);border-radius:6px;padding:26px 16px;text-align:center;cursor:pointer;font:inherit;color:inherit}
+.choice:hover,.choice:focus-visible{border-color:var(--maroon);outline:none;background:#fff3d6}
+.choice b{display:block;font-size:24px;margin-bottom:6px}
+.choice span{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a}
+.panel{background:var(--card);border:2px solid var(--line);border-radius:6px;padding:22px;max-width:480px;margin:0 auto}
+label{display:block;font-family:Arial,sans-serif;font-size:14px;margin:14px 0 5px}
+input{width:100%;padding:12px;font-size:18px;border:2px solid var(--line);border-radius:4px;background:#fff;font-family:Arial,sans-serif}
+input:focus{outline:none;border-color:var(--maroon)}
+.pay{display:flex;gap:10px}
+.pay label{flex:1;margin:0;cursor:pointer}
+.pay input{position:absolute;opacity:0;width:0;height:0}
+.pay span{display:block;text-align:center;padding:12px;font-size:18px;border:2px solid var(--line);border-radius:4px;background:#fff}
+.pay input:checked+span{background:var(--maroon);color:#fff;border-color:var(--maroon)}
+.pay input:focus-visible+span{outline:3px solid var(--gold)}
+.err{color:#b00020;font-family:Arial,sans-serif;font-size:14px;min-height:20px;margin-top:8px}
+.row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+button.p,button.s{padding:13px 20px;font-size:16px;border-radius:4px;cursor:pointer;font-family:Arial,sans-serif;border:2px solid var(--maroon)}
+button.p{background:var(--maroon);color:#fff;flex:1}
+button.s{background:transparent;color:var(--maroon)}
+.tag{display:inline-block;background:var(--maroon);color:#f7e6b8;padding:4px 12px;border-radius:3px;font-family:Arial,sans-serif;font-size:14px;margin-bottom:6px}
+.next{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a}
+.hidden{display:none!important}
+.tools{margin-top:34px;border-top:1px solid var(--line);padding-top:18px}
+.tools .row{margin-top:0}
+.counts{font-family:Arial,sans-serif;font-size:14px;margin:0 0 12px}
+.tablewrap{overflow-x:auto;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap}
+th{background:#efe3c6}
+/* print area */
+#printArea{display:none}
+.token{width:76mm;border:1.5px dashed #000;padding:5mm 4mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid}
+.token .h{font-size:30px;font-weight:700;letter-spacing:.3em;padding-left:.3em;font-family:Georgia,serif}
+.token .sub{font-size:15px;margin-top:2px}
+.token .cat{font-size:17px;font-weight:700;margin-top:8px;border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 0}
+.token .no{font-size:44px;font-weight:700;margin:6px 0;letter-spacing:.05em}
+.token .d{font-size:13px;text-align:left;margin-top:4px}
+.token .cp{font-size:11px;margin-top:6px}
+@media print{
+ @page{margin:6mm}
+ body{background:#fff}
+ header,main{display:none!important}
+ #printArea{display:block}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>SVARA</h1>
+  <p>2026 Lucky Draw &mdash; Token Counter</p>
+  <div id="clock"></div>
+</header>
+
+<main>
+  <section id="stepChoose">
+    <h2>Select token type</h2>
+    <div class="choices">
+      <button class="choice" data-k="RE"><b>Royal Enfield</b><span>Serial starts at B001</span><br><span id="nx-RE"></span></button>
+      <button class="choice" data-k="SI"><b>Silver</b><span>Serial starts at S001</span><br><span id="nx-SI"></span></button>
+      <button class="choice" data-k="SA"><b>Saree</b><span>Serial starts at SA001</span><br><span id="nx-SA"></span></button>
+    </div>
+  </section>
+
+  <section id="stepForm" class="hidden">
+    <div class="panel">
+      <div class="tag" id="selTag"></div>
+      <div class="next" id="selNext"></div>
+      <label for="name">Customer name</label>
+      <input id="name" type="text" autocomplete="off" maxlength="60">
+      <label for="mobile">Mobile number</label>
+      <input id="mobile" type="tel" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="10-digit number">
+      <label>Payment type</label>
+      <div class="pay">
+        <label><input type="radio" name="pay" value="Cash"><span>Cash</span></label>
+        <label><input type="radio" name="pay" value="UPI"><span>UPI</span></label>
+      </div>
+      <div class="err" id="err"></div>
+      <div class="row">
+        <button class="p" id="saveBtn">Save &amp; print 2 tokens</button>
+        <button class="s" id="backBtn">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="tools">
+    <p class="counts" id="counts"></p>
+    <div class="row">
+      <button class="s" id="xlsBtn">Download Excel</button>
+      <button class="s" id="viewBtn">View records</button>
+    </div>
+    <div class="tablewrap hidden" id="tableWrap"></div>
+  </section>
+</main>
+
+<div id="printArea"></div>
+
+<script>
+var TYPES={RE:'Royal Enfield',SI:'Silver',SA:'Saree'};
+var current=null, busy=false;
+
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function two(n){return String(n).padStart(2,'0')}
+function stamp(d){
+  var h=d.getHours(),ap=h>=12?'PM':'AM';h=h%12||12;
+  return {date:two(d.getDate())+'/'+two(d.getMonth()+1)+'/'+d.getFullYear(),time:two(h)+':'+two(d.getMinutes())+':'+two(d.getSeconds())+' '+ap};
+}
+function tick(){var s=stamp(new Date());document.getElementById('clock').textContent=s.date+'  |  '+s.time}
+setInterval(tick,1000);tick();
+
+function api(path,opts){
+  return fetch(path,opts).then(function(r){
+    return r.json().catch(function(){return {}}).then(function(j){
+      if(!r.ok)throw new Error(j.error||'Server error ('+r.status+')');
+      return j;
+    });
+  },function(){throw new Error('Cannot reach the server. Check that the backend is running.')});
+}
+
+var counters={};
+function refresh(){
+  return api('/api/counters').then(function(c){
+    counters=c;
+    var tot=0;
+    Object.keys(TYPES).forEach(function(k){
+      document.getElementById('nx-'+k).textContent='Next: '+c[k].next;
+      tot+=c[k].issued;
+    });
+    document.getElementById('counts').textContent='Tokens issued: Royal Enfield '+c.RE.issued+', Silver '+c.SI.issued+', Saree '+c.SA.issued+' (total '+tot+')';
+    if(!document.getElementById('tableWrap').classList.contains('hidden'))renderTable();
+  }).catch(function(e){
+    document.getElementById('counts').textContent=e.message;
+  });
+}
+
+document.querySelectorAll('.choice').forEach(function(b){
+  b.onclick=function(){
+    current=b.dataset.k;
+    document.getElementById('selTag').textContent=TYPES[current];
+    document.getElementById('selNext').textContent=counters[current]?'This token will be '+counters[current].next:'';
+    document.getElementById('stepChoose').classList.add('hidden');
+    document.getElementById('stepForm').classList.remove('hidden');
+    document.getElementById('err').textContent='';
+    document.getElementById('name').focus();
+  };
+});
+function toChoose(){
+  document.getElementById('stepForm').classList.add('hidden');
+  document.getElementById('stepChoose').classList.remove('hidden');
+  document.getElementById('name').value='';document.getElementById('mobile').value='';
+  document.querySelectorAll('input[name="pay"]').forEach(function(p){p.checked=false});
+  current=null;refresh();
+}
+document.getElementById('backBtn').onclick=toChoose;
+document.getElementById('mobile').oninput=function(){this.value=this.value.replace(/\D/g,'')};
+
+function tokenHTML(t,copy){
+  return '<div class="token"><div class="h">SVARA</div><div class="sub">2026 Lucky Draw</div>'+
+   '<div class="cat">'+esc(t.type)+'</div><div class="no">'+esc(t.serial)+'</div>'+
+   '<div class="d">Name: '+esc(t.name)+'<br>Mobile: '+esc(t.mobile)+'<br>Payment: '+esc(t.payment)+'<br>Date: '+t.date+'<br>Time: '+t.time+'</div>'+
+   '<div class="cp">'+copy+'</div></div>';
+}
+
+document.getElementById('saveBtn').onclick=function(){
+  if(busy)return;
+  var name=document.getElementById('name').value.trim();
+  var mobile=document.getElementById('mobile').value.trim();
+  var err=document.getElementById('err');
+  var payEl=document.querySelector('input[name="pay"]:checked');
+  if(!name){err.textContent='Enter the customer name.';return}
+  if(!/^\d{10}$/.test(mobile)){err.textContent='Enter a valid 10-digit mobile number.';return}
+  if(!payEl){err.textContent='Select a payment type: Cash or UPI.';return}
+  err.textContent='';busy=true;this.disabled=true;var btn=this;
+  api('/api/tokens',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:current,name:name,mobile:mobile,payment:payEl.value})})
+  .then(function(t){
+    document.getElementById('printArea').innerHTML=tokenHTML(t,'Customer copy')+tokenHTML(t,'Office copy');
+    toChoose();
+    setTimeout(function(){window.print()},150);
+  })
+  .catch(function(e){err.textContent=e.message})
+  .then(function(){busy=false;btn.disabled=false});
+};
+
+function renderTable(){
+  api('/api/tokens').then(function(r){
+    if(!r.length){document.getElementById('tableWrap').innerHTML='<p class="counts">No records yet.</p>';return}
+    var h='<table><tr><th>Serial</th><th>Type</th><th>Name</th><th>Mobile</th><th>Payment</th><th>Date</th><th>Time</th></tr>';
+    r.forEach(function(x){h+='<tr><td>'+esc(x.serial)+'</td><td>'+esc(x.type)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+esc(x.payment)+'</td><td>'+x.date+'</td><td>'+x.time+'</td></tr>'});
+    document.getElementById('tableWrap').innerHTML=h+'</table>';
+  }).catch(function(e){document.getElementById('tableWrap').innerHTML='<p class="counts">'+esc(e.message)+'</p>'});
+}
+document.getElementById('viewBtn').onclick=function(){
+  var w=document.getElementById('tableWrap');
+  w.classList.toggle('hidden');
+  this.textContent=w.classList.contains('hidden')?'View records':'Hide records';
+  if(!w.classList.contains('hidden'))renderTable();
+};
+
+document.getElementById('xlsBtn').onclick=function(){window.location.href='/api/export'};
+
+refresh();
+</script>
+</body>
+</html>
