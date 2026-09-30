@@ -57,20 +57,31 @@ th{background:#efe3c6}
 
 /* print area */
 #printArea{display:none}
-.token{width:76mm;border:1.5px dashed #000;padding:5mm 4mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid}
+.token{width:76mm;border:1.5px dashed #000;padding:5mm 4mm 6mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid;page-break-after:always;break-after:page}
 .token .h{font-size:30px;font-weight:700;letter-spacing:.3em;padding-left:.3em;font-family:Georgia,serif}
 .token .sub{font-size:15px;margin-top:2px}
-.token .cat{font-size:17px;font-weight:700;margin-top:8px;border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 0}
-.token .no{font-size:44px;font-weight:700;margin:6px 0;letter-spacing:.05em}
+.token .contact{font-size:12px;font-weight:700;margin-top:4px;letter-spacing:.01em}
+.token .cat{font-size:17px;font-weight:700;margin-top:7px;border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 0}
+.token .no{font-size:40px;font-weight:700;margin:6px 0;letter-spacing:.04em}
 .token .d{font-size:13px;text-align:left;margin-top:4px}
-.token .cp{font-size:11px;margin-top:6px}
+.token .cp{font-size:12px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px}
+.cut-spacer{height:10mm}
 @media print{
- @page{margin:6mm}
- body{background:#fff}
+ @page{size:80mm auto;margin:2mm 0}
+ body{background:#fff;margin:0;padding:0}
  header,main,#loginSection{display:none!important}
  #printArea{display:block}
+ .token{
+   width:72mm!important;
+   margin:0 auto!important;
+   padding:4mm 3mm 6mm!important;
+   page-break-inside:avoid!important;
+   page-break-after:always!important;
+   break-after:page!important;
+ }
 }
 </style>
+
 </head>
 <body>
 <header>
@@ -105,9 +116,10 @@ th{background:#efe3c6}
   <section id="stepChoose">
     <h2>Select token type</h2>
     <div class="choices">
-      <button class="choice" data-k="RE"><b>Royal Enfield</b><span>Serial starts at B001</span><br><span id="nx-RE"></span></button>
-      <button class="choice" data-k="SI"><b>Silver</b><span>Serial starts at S001</span><br><span id="nx-SI"></span></button>
-      <button class="choice" data-k="SA"><b>Saree</b><span>Serial starts at SA001</span><br><span id="nx-SA"></span></button>
+      <button class="choice" data-k="RE"><b>Royal Enfield</b><span>Serial starts at B00001</span><br><span id="nx-RE"></span></button>
+      <button class="choice" data-k="SI"><b>Silver</b><span>Serial starts at S00001</span><br><span id="nx-SI"></span></button>
+      <button class="choice" data-k="SA"><b>Saree</b><span>Serial starts at SA00001</span><br><span id="nx-SA"></span></button>
+
     </div>
   </section>
 
@@ -146,7 +158,11 @@ th{background:#efe3c6}
       <button class="s" id="xlsBtn">Download Excel</button>
       <button class="s" id="viewBtn">View records</button>
       <button class="s" id="cancelPromptBtn" style="color:#b00020;border-color:#b00020">Cancel token by Serial</button>
+      <button class="s" id="importBtn" style="color:#1b5e20;border-color:#1b5e20">Restore from Excel</button>
+      <input type="file" id="importFileInput" accept=".xlsx" style="display:none">
     </div>
+    <div id="storageNotice" style="font-family:Arial,sans-serif;font-size:12px;color:#6b5a4a;margin-top:10px"></div>
+
 
     <div class="tablewrap hidden" id="tableWrap"></div>
   </section>
@@ -264,8 +280,9 @@ function refresh(){
 
 var PREFIXES={RE:'B',SI:'S',SA:'SA'};
 function fmtSerial(prefix, n){
-  return prefix + String(n).padStart(3, '0');
+  return prefix + String(n).padStart(5, '0');
 }
+
 
 function updateQtyPreview(){
   if(!current || !counters[current]) return;
@@ -334,10 +351,12 @@ document.getElementById('quantity').oninput=updateQtyPreview;
 
 function tokenHTML(t,copy){
   return '<div class="token"><div class="h">SVARA</div><div class="sub">2026 Lucky Draw</div>'+
+   '<div class="contact">Cell: +91 9848433020, +91 9885897093</div>'+
    '<div class="cat">'+esc(t.type)+'</div><div class="no">'+esc(t.serial)+'</div>'+
    '<div class="d">Name: '+esc(t.name)+'<br>Mobile: '+esc(t.mobile)+'<br>Payment: '+esc(t.payment)+'<br>Date: '+t.date+'<br>Time: '+t.time+'</div>'+
-   '<div class="cp">'+copy+'</div></div>';
+   '<div class="cp">'+copy+'</div><div class="cut-spacer"></div></div>';
 }
+
 
 document.getElementById('saveBtn').onclick=function(){
   if(busy)return;
@@ -409,7 +428,61 @@ document.getElementById('viewBtn').onclick=function(){
 
 document.getElementById('xlsBtn').onclick=function(){window.location.href='/api/export'};
 
+document.getElementById('importBtn').onclick = function(){
+  document.getElementById('importFileInput').click();
+};
+
+document.getElementById('importFileInput').onchange = function(){
+  var file = this.files[0];
+  if(!file) return;
+  var formData = new FormData();
+  formData.append('file', file);
+  var btn = document.getElementById('importBtn');
+  btn.disabled = true;
+  btn.textContent = 'Restoring...';
+  fetch('/api/import', {
+    method: 'POST',
+    body: formData
+  })
+  .then(function(r){
+    return r.json().catch(function(){ return {}; }).then(function(j){
+      if(!r.ok) throw new Error(j.error || 'Import failed');
+      return j;
+    });
+  })
+  .then(function(res){
+    alert(res.message || 'Restored successfully!');
+    refresh();
+  })
+  .catch(function(e){
+    alert('Import error: ' + e.message);
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = 'Restore from Excel';
+    document.getElementById('importFileInput').value = '';
+  });
+};
+
+function checkStorageStatus(){
+  fetch('/api/system/status')
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      var el = document.getElementById('storageNotice');
+      if(el){
+        if(j.persistent){
+          el.innerHTML = '<span style="color:#1b5e20;font-weight:700">&#x25CF; Storage: PostgreSQL (Persistent Across All Deploys)</span>';
+        } else {
+          el.innerHTML = '<span style="color:#b00020;font-weight:700">&#x25CF; Storage: Temporary Container Disk</span> &mdash; Add <code>DATABASE_URL</code> in Render Environment to persist forever without resets.';
+        }
+      }
+    })
+    .catch(function(){});
+}
+
 checkAuth();
+checkStorageStatus();
+
 
 </script>
 </body>

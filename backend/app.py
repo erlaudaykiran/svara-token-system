@@ -24,7 +24,9 @@ except ImportError:
 from functools import wraps
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
+import openpyxl
 from openpyxl import Workbook
+
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -175,7 +177,8 @@ def require_auth(f):
 
 
 def fmt_serial(prefix, n):
-    return f"{prefix}{n:03d}"
+    return f"{prefix}{n:05d}"
+
 
 
 COLUMNS = ["Token No", "Type", "Name", "Mobile", "Payment", "Date", "Time"]
@@ -395,9 +398,104 @@ def delete_token(serial):
     return jsonify(success=True, deleted=serial, message=f"Token {serial} cancelled and removed from database and Excel.")
 
 
+@app.get("/api/system/status")
+def system_status():
+    db = connect()
+    try:
+        is_pg = db.is_pg
+    finally:
+        db.close()
+    return jsonify({
+        "persistent": is_pg,
+        "storage": "PostgreSQL (Persistent across all deploys)" if is_pg else "Local SQLite (Ephemeral - add DATABASE_URL in Render to persist forever)"
+    })
+
+
+@app.post("/api/import")
+@require_auth
+def import_excel():
+    file = request.files.get("file")
+    if not file or not (file.filename.endswith(".xlsx") or file.filename.endswith(".XLSX")):
+        return jsonify(error="Please upload a valid .xlsx Excel file."), 400
+
+    try:
+        wb = openpyxl.load_workbook(file)
+        ws = wb.active
+    except Exception as e:
+        return jsonify(error=f"Cannot read Excel file: {str(e)}"), 400
+
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
+        return jsonify(error="The uploaded Excel file has no token data rows."), 400
+
+    db = connect()
+    imported = 0
+    max_nums = {"RE": 0, "SI": 0, "SA": 0}
+    labels = {"RE": "Royal Enfield", "SI": "Silver", "SA": "Saree"}
+
+    try:
+        for row in rows[1:]:
+            if not row or not row[0]:
+                continue
+            serial = str(row[0]).strip().upper()
+            token_type = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+            name = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+            mobile = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+            payment = str(row[4]).strip() if len(row) > 4 and row[4] else "Cash"
+            c_date = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+            c_time = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+
+            if serial.startswith("SA"):
+                type_key = "SA"
+            elif serial.startswith("S"):
+                type_key = "SI"
+            elif serial.startswith("B"):
+                type_key = "RE"
+            else:
+                continue
+
+            m = re.search(r"\d+", serial)
+            if m:
+                n = int(m.group(0))
+                if n > max_nums[type_key]:
+                    max_nums[type_key] = n
+
+            if not token_type:
+                token_type = labels.get(type_key, "Token")
+
+            now_iso = datetime.now().isoformat()
+            if db.is_pg:
+                db.execute("""
+                    INSERT INTO tokens (serial, type_key, token_type, name, mobile, payment, created_date, created_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (serial) DO NOTHING
+                """, (serial, type_key, token_type, name, mobile, payment, c_date, c_time, now_iso))
+            else:
+                db.execute("""
+                    INSERT OR IGNORE INTO tokens (serial, type_key, token_type, name, mobile, payment, created_date, created_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (serial, type_key, token_type, name, mobile, payment, c_date, c_time, now_iso))
+            imported += 1
+
+        for tk, max_n in max_nums.items():
+            if max_n > 0:
+                db.execute("UPDATE counters SET last_no = ? WHERE type_key = ? AND last_no < ?", (max_n, tk, max_n))
+
+        db.commit()
+        refresh_excel_file(db)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    return jsonify(success=True, imported=imported, message=f"Successfully restored {imported} tokens from Excel! Counters updated.")
+
+
 @app.get("/api/export")
 @require_auth
 def export_excel():
+
     db = connect()
     try:
         wb = build_workbook(all_rows(db))
