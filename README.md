@@ -25,8 +25,17 @@ To use it from other computers on the same Wi-Fi/LAN, open
 http://<server-PC-IP>:5000 on them. All counters then share one database,
 and serial numbers never repeat (each save is one locked database transaction).
 
+## Authentication
+- Default credentials:
+  - **User ID**: `admin`
+  - **Password**: `svara@2026`
+- Only one person can be logged in at a time. If another person signs in, the previous session is automatically ended.
+- You can customize the credentials via environment variables: `SVARA_USER` and `SVARA_PASSWORD`.
+
 Optional environment variables: SVARA_PORT (default 5000),
-SVARA_HOST (default 0.0.0.0, use 127.0.0.1 to allow this PC only), SVARA_DB (database path).
+SVARA_HOST (default 0.0.0.0, use 127.0.0.1 to allow this PC only), SVARA_DB (database path),
+SVARA_USER (default admin), SVARA_PASSWORD (default svara@2026).
+
 
 ## Excel
 - exports/SVARA_2026_Tokens.xlsx is rewritten after every saved token.

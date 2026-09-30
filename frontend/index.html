@@ -8,10 +8,13 @@
 :root{--bg:#f6efe2;--ink:#2a1216;--maroon:#7a1424;--gold:#b98a2e;--card:#fffaf0;--line:#dccfb4}
 *{box-sizing:border-box}
 body{margin:0;font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--ink);min-height:100vh}
-header{background:var(--maroon);color:#f7e6b8;padding:18px 20px;text-align:center}
+header{background:var(--maroon);color:#f7e6b8;padding:18px 20px;text-align:center;position:relative}
 header h1{margin:0;font-size:34px;letter-spacing:.35em;font-weight:700;padding-left:.35em}
 header p{margin:4px 0 0;font-size:15px}
 #clock{font-size:13px;opacity:.85;margin-top:6px;font-family:Arial,sans-serif}
+.auth-bar{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px;font-family:Arial,sans-serif;font-size:13px}
+.logout-btn{background:transparent;border:1px solid #f7e6b8;color:#f7e6b8;border-radius:4px;padding:4px 12px;cursor:pointer;font-family:Arial,sans-serif;font-size:12px;transition:all .15s}
+.logout-btn:hover{background:#f7e6b8;color:var(--maroon)}
 main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
 h2{font-size:22px;margin:0 0 16px}
 .choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
@@ -20,6 +23,7 @@ h2{font-size:22px;margin:0 0 16px}
 .choice b{display:block;font-size:24px;margin-bottom:6px}
 .choice span{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a}
 .panel{background:var(--card);border:2px solid var(--line);border-radius:6px;padding:22px;max-width:480px;margin:0 auto}
+.login-panel{max-width:390px;margin:40px auto 0;box-shadow:0 6px 16px rgba(0,0,0,.06)}
 label{display:block;font-family:Arial,sans-serif;font-size:14px;margin:14px 0 5px}
 input{width:100%;padding:12px;font-size:18px;border:2px solid var(--line);border-radius:4px;background:#fff;font-family:Arial,sans-serif}
 input:focus{outline:none;border-color:var(--maroon)}
@@ -56,7 +60,7 @@ th{background:#efe3c6}
 @media print{
  @page{margin:6mm}
  body{background:#fff}
- header,main{display:none!important}
+ header,main,#loginSection{display:none!important}
  #printArea{display:block}
 }
 </style>
@@ -66,9 +70,31 @@ th{background:#efe3c6}
   <h1>SVARA</h1>
   <p>2026 Lucky Draw &mdash; Token Counter</p>
   <div id="clock"></div>
+  <div id="authBar" class="auth-bar hidden">
+    <span>Authorized Session Active</span>
+    <button id="logoutBtn" class="logout-btn">Sign Out</button>
+  </div>
 </header>
 
-<main>
+<section id="loginSection" class="hidden">
+  <div class="panel login-panel">
+    <div class="tag" style="background:var(--maroon);margin-bottom:10px;">Staff Access Only</div>
+    <h2 style="margin-top:0">Sign In</h2>
+    <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
+      Only one authorized person can access the token counter at a time.
+    </p>
+    <label for="loginUser">User ID</label>
+    <input id="loginUser" type="text" autocomplete="username" placeholder="Enter User ID">
+    <label for="loginPass">Password</label>
+    <input id="loginPass" type="password" autocomplete="current-password" placeholder="Enter Password">
+    <div class="err" id="loginErr"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="p" id="loginBtn">Sign In</button>
+    </div>
+  </div>
+</section>
+
+<main id="appView" class="hidden">
   <section id="stepChoose">
     <h2>Select token type</h2>
     <div class="choices">
@@ -124,9 +150,79 @@ function stamp(d){
 function tick(){var s=stamp(new Date());document.getElementById('clock').textContent=s.date+'  |  '+s.time}
 setInterval(tick,1000);tick();
 
+function showLogin(msg){
+  document.getElementById('loginSection').classList.remove('hidden');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('authBar').classList.add('hidden');
+  document.getElementById('loginPass').value='';
+  document.getElementById('loginErr').textContent=msg||'';
+  setTimeout(function(){document.getElementById('loginUser').focus()},100);
+}
+
+function showApp(){
+  document.getElementById('loginSection').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  document.getElementById('authBar').classList.remove('hidden');
+  refresh();
+}
+
+function checkAuth(){
+  fetch('/api/auth/status')
+    .then(function(r){return r.json()})
+    .then(function(j){
+      if(j.authenticated){
+        showApp();
+      }else{
+        showLogin();
+      }
+    })
+    .catch(function(){
+      showLogin('Cannot reach the server.');
+    });
+}
+
+function doLogin(){
+  var u=document.getElementById('loginUser').value.trim();
+  var p=document.getElementById('loginPass').value.trim();
+  var err=document.getElementById('loginErr');
+  if(!u||!p){err.textContent='Please enter both User ID and Password.';return}
+  err.textContent='';
+  fetch('/api/auth/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:u,password:p})
+  })
+  .then(function(r){
+    return r.json().catch(function(){return{}}).then(function(j){
+      if(!r.ok)throw new Error(j.error||'Invalid credentials');
+      return j;
+    });
+  })
+  .then(function(){
+    showApp();
+  })
+  .catch(function(e){
+    err.textContent=e.message;
+  });
+}
+
+document.getElementById('loginBtn').onclick=doLogin;
+document.getElementById('loginPass').onkeydown=function(e){if(e.key==='Enter')doLogin()};
+document.getElementById('loginUser').onkeydown=function(e){if(e.key==='Enter')doLogin()};
+
+document.getElementById('logoutBtn').onclick=function(){
+  fetch('/api/auth/logout',{method:'POST'})
+    .then(function(){showLogin('Signed out successfully.')})
+    .catch(function(){showLogin()});
+};
+
 function api(path,opts){
   return fetch(path,opts).then(function(r){
     return r.json().catch(function(){return {}}).then(function(j){
+      if(r.status===401){
+        showLogin(j.error||'Session expired or signed in elsewhere.');
+        throw new Error(j.error||'Authentication required');
+      }
       if(!r.ok)throw new Error(j.error||'Server error ('+r.status+')');
       return j;
     });
@@ -215,7 +311,7 @@ document.getElementById('viewBtn').onclick=function(){
 
 document.getElementById('xlsBtn').onclick=function(){window.location.href='/api/export'};
 
-refresh();
+checkAuth();
 </script>
 </body>
 </html>

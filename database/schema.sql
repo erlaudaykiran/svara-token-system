@@ -29,3 +29,11 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tokens_type ON tokens(type_key);
+
+-- Single active session: id is constrained to 1 so at most one person is logged in.
+CREATE TABLE IF NOT EXISTS active_sessions (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    session_token TEXT NOT NULL,
+    logged_in_at  TEXT NOT NULL
+);
+

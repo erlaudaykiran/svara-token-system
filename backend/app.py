@@ -1,7 +1,10 @@
 """
 SVARA 2026 Lucky Draw - token printing backend.
 
-Flask + SQLite. Serves the frontend and a small JSON API:
+Flask + SQLite. Serves the frontend and a JSON API:
+  POST /api/auth/login    authenticate staff (single user & session)
+  POST /api/auth/logout   end active session
+  GET  /api/auth/status   check if current user is logged in
   GET  /api/counters      next serial + issued count per category
   POST /api/tokens        create a token (serial is assigned atomically)
   GET  /api/tokens        list all tokens (newest first)
@@ -11,10 +14,12 @@ Every saved token also refreshes exports/SVARA_2026_Tokens.xlsx.
 import io
 import os
 import re
+import secrets
 import sqlite3
 from datetime import datetime
+from functools import wraps
 
-from flask import Flask, jsonify, request, send_file, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -27,7 +32,14 @@ FRONTEND = os.path.join(ROOT, "frontend")
 EXPORT_DIR = os.path.join(ROOT, "exports")
 EXPORT_FILE = os.path.join(EXPORT_DIR, "SVARA_2026_Tokens.xlsx")
 
+# Credentials: single User ID and Password
+AUTH_USER = os.environ.get("SVARA_USER", "admin")
+AUTH_PASS = os.environ.get("SVARA_PASSWORD", "svara@2026")
+
 app = Flask(__name__, static_folder=None)
+app.secret_key = os.environ.get("SECRET_KEY", "svara-token-system-secret-key-2026")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 
 def connect():
@@ -45,6 +57,27 @@ def init_db():
             conn.executescript(f.read())
     finally:
         conn.close()
+
+
+def is_authenticated():
+    token = session.get("token")
+    if not token:
+        return False
+    conn = connect()
+    try:
+        row = conn.execute("SELECT session_token FROM active_sessions WHERE id = 1").fetchone()
+        return bool(row and secrets.compare_digest(row["session_token"], token))
+    finally:
+        conn.close()
+
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not is_authenticated():
+            return jsonify(error="Authentication required. Please sign in.", auth=False), 401
+        return f(*args, **kwargs)
+    return decorated
 
 
 def fmt_serial(prefix, n):
@@ -98,7 +131,53 @@ def token_json(r):
             "date": r["created_date"], "time": r["created_time"]}
 
 
+@app.post("/api/auth/login")
+def login():
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", "")).strip()
+
+    if not (secrets.compare_digest(username, AUTH_USER) and secrets.compare_digest(password, AUTH_PASS)):
+        return jsonify(error="Invalid User ID or Password."), 401
+
+    token = secrets.token_hex(24)
+    now_iso = datetime.now().isoformat()
+    conn = connect()
+    try:
+        # Single active session: id=1 ensures only one person can be logged in at a time
+        conn.execute(
+            "INSERT OR REPLACE INTO active_sessions (id, session_token, logged_in_at) VALUES (1, ?, ?)",
+            (token, now_iso)
+        )
+    finally:
+        conn.close()
+
+    session["token"] = token
+    return jsonify(success=True, user=AUTH_USER)
+
+
+@app.post("/api/auth/logout")
+def logout():
+    token = session.get("token")
+    if token:
+        conn = connect()
+        try:
+            conn.execute("DELETE FROM active_sessions WHERE id = 1 AND session_token = ?", (token,))
+        finally:
+            conn.close()
+    session.clear()
+    return jsonify(success=True)
+
+
+@app.get("/api/auth/status")
+def auth_status():
+    if is_authenticated():
+        return jsonify(authenticated=True, user=AUTH_USER)
+    return jsonify(authenticated=False)
+
+
 @app.get("/api/counters")
+@require_auth
 def counters():
     conn = connect()
     try:
@@ -112,6 +191,7 @@ def counters():
 
 
 @app.post("/api/tokens")
+@require_auth
 def create_token():
     data = request.get_json(silent=True) or {}
     type_key = str(data.get("type", "")).strip()
@@ -155,6 +235,7 @@ def create_token():
 
 
 @app.get("/api/tokens")
+@require_auth
 def list_tokens():
     conn = connect()
     try:
@@ -164,6 +245,7 @@ def list_tokens():
 
 
 @app.get("/api/export")
+@require_auth
 def export_excel():
     conn = connect()
     try:
@@ -185,7 +267,7 @@ def index():
 init_db()
 
 if __name__ == "__main__":
-    host = os.environ.get("SVARA_HOST", "0.0.0.0")  # 0.0.0.0 lets other PCs on the network open it
+    host = os.environ.get("SVARA_HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", os.environ.get("SVARA_PORT", "5000")))
     print(f"\n  SVARA token system running:  http://localhost:{port}\n")
     app.run(host=host, port=port, threaded=True)
