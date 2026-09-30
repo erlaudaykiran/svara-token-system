@@ -16,8 +16,13 @@ import os
 import re
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 from functools import wraps
+
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from openpyxl import Workbook
@@ -84,9 +89,20 @@ def fmt_serial(prefix, n):
     return f"{prefix}{n:03d}"
 
 
+TZ_NAME = os.environ.get("SVARA_TZ", "Asia/Kolkata")
+
+
+def get_tz():
+    try:
+        return ZoneInfo(TZ_NAME)
+    except Exception:
+        return timezone(timedelta(hours=5, minutes=30))
+
+
 def now_parts():
-    d = datetime.now()
+    d = datetime.now(get_tz())
     return d.strftime("%d/%m/%Y"), d.strftime("%I:%M:%S %p"), d.isoformat(timespec="seconds")
+
 
 
 COLUMNS = ["Token No", "Type", "Name", "Mobile", "Payment", "Date", "Time"]
@@ -201,6 +217,13 @@ def create_token():
     mobile = str(data.get("mobile", "")).strip()
     payment = str(data.get("payment", "")).strip()
 
+    try:
+        quantity = int(data.get("quantity", 1))
+        if quantity < 1 or quantity > 100:
+            return jsonify(error="Number of tokens must be between 1 and 100."), 400
+    except (TypeError, ValueError):
+        return jsonify(error="Invalid number of tokens entered."), 400
+
     if not name or len(name) > 60:
         return jsonify(error="Enter the customer name (max 60 characters)."), 400
     if not re.fullmatch(r"\d{10}", mobile):
@@ -216,24 +239,49 @@ def create_token():
             if c is None:
                 conn.execute("ROLLBACK")
                 return jsonify(error="Unknown token type."), 400
-            n = c["last_no"] + 1
-            serial = fmt_serial(c["prefix"], n)
+
+            start_no = c["last_no"]
+            end_no = start_no + quantity
             date, time_, iso = now_parts()
-            conn.execute("UPDATE counters SET last_no = ? WHERE type_key = ?", (n, type_key))
-            conn.execute(
-                "INSERT INTO tokens (serial, type_key, token_type, name, mobile, payment,"
-                " created_date, created_time, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (serial, type_key, c["label"], name, mobile, payment, date, time_, iso))
+            created_tokens = []
+
+            for n in range(start_no + 1, end_no + 1):
+                serial = fmt_serial(c["prefix"], n)
+                conn.execute(
+                    "INSERT INTO tokens (serial, type_key, token_type, name, mobile, payment,"
+                    " created_date, created_time, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (serial, type_key, c["label"], name, mobile, payment, date, time_, iso))
+                created_tokens.append({
+                    "serial": serial, "type": c["label"], "name": name,
+                    "mobile": mobile, "payment": payment,
+                    "date": date, "time": time_
+                })
+
+            conn.execute("UPDATE counters SET last_no = ? WHERE type_key = ?", (end_no, type_key))
             conn.execute("COMMIT")
         except Exception:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
             raise
-        row = conn.execute("SELECT * FROM tokens WHERE serial = ?", (serial,)).fetchone()
         refresh_excel_file(conn)
     finally:
         conn.close()
-    return jsonify(token_json(row)), 201
+
+    res = {
+        "tokens": created_tokens,
+        "count": len(created_tokens),
+        "first": created_tokens[0]["serial"],
+        "last": created_tokens[-1]["serial"],
+        "serial": created_tokens[0]["serial"],
+        "type": created_tokens[0]["type"],
+        "name": created_tokens[0]["name"],
+        "mobile": created_tokens[0]["mobile"],
+        "payment": created_tokens[0]["payment"],
+        "date": created_tokens[0]["date"],
+        "time": created_tokens[0]["time"],
+    }
+    return jsonify(res), 201
+
 
 
 @app.get("/api/tokens")

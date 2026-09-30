@@ -39,8 +39,12 @@ button.p,button.s{padding:13px 20px;font-size:16px;border-radius:4px;cursor:poin
 button.p{background:var(--maroon);color:#fff;flex:1}
 button.s{background:transparent;color:var(--maroon)}
 .tag{display:inline-block;background:var(--maroon);color:#f7e6b8;padding:4px 12px;border-radius:3px;font-family:Arial,sans-serif;font-size:14px;margin-bottom:6px}
+.qty-row{display:flex;align-items:center;gap:8px}
+.qty-btn{padding:10px 18px!important;font-size:22px!important;font-weight:700!important;line-height:1;border-radius:4px;user-select:none}
+.qty-preview{font-family:Arial,sans-serif;font-size:13px;color:var(--maroon);font-weight:600;margin-top:6px;min-height:18px}
 .next{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a}
 .hidden{display:none!important}
+
 .tools{margin-top:34px;border-top:1px solid var(--line);padding-top:18px}
 .tools .row{margin-top:0}
 .counts{font-family:Arial,sans-serif;font-size:14px;margin:0 0 12px}
@@ -115,7 +119,15 @@ th{background:#efe3c6}
       <input id="name" type="text" autocomplete="off" maxlength="60">
       <label for="mobile">Mobile number</label>
       <input id="mobile" type="tel" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="10-digit number">
+      <label for="quantity">Number of tokens to issue in serial</label>
+      <div class="qty-row">
+        <button type="button" class="s qty-btn" id="qtyMinus">-</button>
+        <input id="quantity" type="number" min="1" max="100" value="1" inputmode="numeric" style="text-align:center;font-weight:700">
+        <button type="button" class="s qty-btn" id="qtyPlus">+</button>
+      </div>
+      <div class="qty-preview" id="qtyPreview"></div>
       <label>Payment type</label>
+
       <div class="pay">
         <label><input type="radio" name="pay" value="Cash"><span>Cash</span></label>
         <label><input type="radio" name="pay" value="UPI"><span>UPI</span></label>
@@ -250,11 +262,43 @@ function refresh(){
   });
 }
 
+var PREFIXES={RE:'B',SI:'S',SA:'SA'};
+function fmtSerial(prefix, n){
+  return prefix + String(n).padStart(3, '0');
+}
+
+function updateQtyPreview(){
+  if(!current || !counters[current]) return;
+  var qEl = document.getElementById('quantity');
+  var q = parseInt(qEl.value, 10);
+  if(isNaN(q) || q < 1) q = 1;
+  if(q > 100) q = 100;
+  var pfx = PREFIXES[current];
+  var nextStr = counters[current].next || '';
+  var match = nextStr.match(/\d+$/);
+  var startNo = match ? parseInt(match[0], 10) : 1;
+  var endNo = startNo + q - 1;
+  var startSerial = fmtSerial(pfx, startNo);
+  var endSerial = fmtSerial(pfx, endNo);
+
+  var prevEl = document.getElementById('qtyPreview');
+  var saveEl = document.getElementById('saveBtn');
+  if(q === 1){
+    prevEl.textContent = 'Token to issue: ' + startSerial;
+    saveEl.textContent = 'Save & print 2 tokens (Customer + Office copy)';
+  } else {
+    prevEl.textContent = 'Tokens in serial to issue: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)';
+    saveEl.textContent = 'Save & print ' + (q * 2) + ' tokens (' + q + ' pairs in serial)';
+  }
+}
+
 document.querySelectorAll('.choice').forEach(function(b){
   b.onclick=function(){
     current=b.dataset.k;
     document.getElementById('selTag').textContent=TYPES[current];
-    document.getElementById('selNext').textContent=counters[current]?'This token will be '+counters[current].next:'';
+    document.getElementById('selNext').textContent=counters[current]?'Next serial begins at '+counters[current].next:'';
+    document.getElementById('quantity').value='1';
+    updateQtyPreview();
     document.getElementById('stepChoose').classList.add('hidden');
     document.getElementById('stepForm').classList.remove('hidden');
     document.getElementById('err').textContent='';
@@ -265,11 +309,28 @@ function toChoose(){
   document.getElementById('stepForm').classList.add('hidden');
   document.getElementById('stepChoose').classList.remove('hidden');
   document.getElementById('name').value='';document.getElementById('mobile').value='';
+  document.getElementById('quantity').value='1';
   document.querySelectorAll('input[name="pay"]').forEach(function(p){p.checked=false});
   current=null;refresh();
 }
 document.getElementById('backBtn').onclick=toChoose;
 document.getElementById('mobile').oninput=function(){this.value=this.value.replace(/\D/g,'')};
+
+document.getElementById('qtyMinus').onclick=function(){
+  var el=document.getElementById('quantity');
+  var v=(parseInt(el.value,10)||1)-1;
+  if(v<1)v=1;
+  el.value=v;
+  updateQtyPreview();
+};
+document.getElementById('qtyPlus').onclick=function(){
+  var el=document.getElementById('quantity');
+  var v=(parseInt(el.value,10)||1)+1;
+  if(v>100)v=100;
+  el.value=v;
+  updateQtyPreview();
+};
+document.getElementById('quantity').oninput=updateQtyPreview;
 
 function tokenHTML(t,copy){
   return '<div class="token"><div class="h">SVARA</div><div class="sub">2026 Lucky Draw</div>'+
@@ -282,22 +343,30 @@ document.getElementById('saveBtn').onclick=function(){
   if(busy)return;
   var name=document.getElementById('name').value.trim();
   var mobile=document.getElementById('mobile').value.trim();
+  var qty=parseInt(document.getElementById('quantity').value,10)||1;
   var err=document.getElementById('err');
   var payEl=document.querySelector('input[name="pay"]:checked');
   if(!name){err.textContent='Enter the customer name.';return}
   if(!/^\d{10}$/.test(mobile)){err.textContent='Enter a valid 10-digit mobile number.';return}
+  if(qty < 1 || qty > 100){err.textContent='Enter a valid number of tokens (1 to 100).';return}
   if(!payEl){err.textContent='Select a payment type: Cash or UPI.';return}
   err.textContent='';busy=true;this.disabled=true;var btn=this;
   api('/api/tokens',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:current,name:name,mobile:mobile,payment:payEl.value})})
-  .then(function(t){
-    document.getElementById('printArea').innerHTML=tokenHTML(t,'Customer copy')+tokenHTML(t,'Office copy');
+      body:JSON.stringify({type:current,name:name,mobile:mobile,payment:payEl.value,quantity:qty})})
+  .then(function(res){
+    var list = res.tokens || [res];
+    var html = '';
+    list.forEach(function(t){
+      html += tokenHTML(t,'Customer copy')+tokenHTML(t,'Office copy');
+    });
+    document.getElementById('printArea').innerHTML=html;
     toChoose();
     setTimeout(function(){window.print()},150);
   })
   .catch(function(e){err.textContent=e.message})
   .then(function(){busy=false;btn.disabled=false});
 };
+
 
 function renderTable(){
   api('/api/tokens').then(function(r){
