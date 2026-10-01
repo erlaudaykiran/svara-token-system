@@ -3,17 +3,19 @@ SVARA 2026 Lucky Draw - token printing backend.
 
 Flask + SQLite / PostgreSQL.
 Multi-User Counter Management & Secure Token Generation:
-  - Administrator (admin): views and exports all tokens combined + per counter
-  - 3 Independent Counters (counter1, counter2, counter3): isolated logins & data
+  - Administrator (admin): full management, all counters combined, edit and void controls
+  - 3 Independent Counters (counter1, counter2, counter3): issuance and read-only records
+  - Strictly Sequential & Thread-Safe: Concurrent requests locked for guaranteed sequential numbers
+  - Non-Rolling Void: Voided tokens are marked VOID with audit trail; counters NEVER roll back
+  - Automated Save: Tokens are saved atomically upon generation
   - Dynamic Pricing: Royal Enfield ₹301, Silver ₹201, Saree ₹101
-  - Two-Step Flow: Print first -> Commit & Save to PostgreSQL / Database only on confirmation
-  - Thermal Printer Auto-Cut & Offline-Safe Logo Header
 """
 import io
 import os
 import re
 import secrets
 import sqlite3
+import threading
 from datetime import datetime, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -29,6 +31,9 @@ import openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
+
+# Thread-level lock for process concurrency and SQLite atomic writes
+db_lock = threading.Lock()
 
 # Database Configuration:
 # When DATABASE_URL is set (Render PostgreSQL, Neon, Supabase), use PostgreSQL.
@@ -126,7 +131,7 @@ def connect():
         except Exception as e:
             print(f"[WARN] Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
 
-    conn = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
+    conn = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
     return DBWrapper(conn, is_pg=False)
 
@@ -159,6 +164,9 @@ def init_db():
                     type_key      VARCHAR(10) NOT NULL REFERENCES counters(type_key),
                     token_type    VARCHAR(50) NOT NULL,
                     price         INTEGER NOT NULL DEFAULT 0,
+                    status        VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+                    voided_at     VARCHAR(40),
+                    voided_by     VARCHAR(50),
                     name          VARCHAR(100) NOT NULL,
                     mobile        VARCHAR(20) NOT NULL,
                     payment       VARCHAR(20) NOT NULL CHECK (payment IN ('Cash', 'UPI')),
@@ -171,9 +179,13 @@ def init_db():
             """)
             db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_type ON tokens(type_key);")
             db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(created_by);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);")
 
             # Safe column additions if table was created in an earlier build
             db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS price INTEGER NOT NULL DEFAULT 0;")
+            db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE';")
+            db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS voided_at VARCHAR(40);")
+            db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS voided_by VARCHAR(50);")
             db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS created_by VARCHAR(50) NOT NULL DEFAULT 'admin';")
             db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS counter_name VARCHAR(50) NOT NULL DEFAULT 'Main Counter';")
 
@@ -206,12 +218,19 @@ def init_db():
             cols = [r["name"] for r in cur.fetchall()]
             if "price" not in cols:
                 db.execute("ALTER TABLE tokens ADD COLUMN price INTEGER NOT NULL DEFAULT 0")
+            if "status" not in cols:
+                db.execute("ALTER TABLE tokens ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'")
+            if "voided_at" not in cols:
+                db.execute("ALTER TABLE tokens ADD COLUMN voided_at TEXT")
+            if "voided_by" not in cols:
+                db.execute("ALTER TABLE tokens ADD COLUMN voided_by TEXT")
             if "created_by" not in cols:
                 db.execute("ALTER TABLE tokens ADD COLUMN created_by TEXT NOT NULL DEFAULT 'admin'")
             if "counter_name" not in cols:
                 db.execute("ALTER TABLE tokens ADD COLUMN counter_name TEXT NOT NULL DEFAULT 'Main Counter'")
 
             db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(created_by)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)")
 
             cur_s = db.execute("PRAGMA table_info(active_sessions)")
             s_rows = cur_s.fetchall()
@@ -229,13 +248,13 @@ def init_db():
         db.close()
 
 
-
-
 def get_tz():
-    try:
-        return ZoneInfo(TZ_NAME)
-    except Exception:
-        return timezone(timedelta(hours=5, minutes=30))
+    if ZoneInfo:
+        try:
+            return ZoneInfo(TZ_NAME)
+        except Exception:
+            pass
+    return timezone(timedelta(hours=5, minutes=30))
 
 
 def now_parts():
@@ -287,7 +306,6 @@ def authenticate_user(username, password):
     return None
 
 
-
 def get_current_user():
     token = session.get("token")
     username = session.get("user")
@@ -301,14 +319,19 @@ def get_current_user():
     try:
         cur = db.execute("SELECT session_token FROM active_sessions WHERE user_id = ?", (username,))
         row = cur.fetchone()
-        if row and secrets.compare_digest(row["session_token"], token):
-            cfg = USERS[username]
-            return {
-                "username": username,
-                "role": cfg["role"],
-                "name": cfg["name"],
-                "counter_name": cfg["counter_name"]
-            }
+        if row:
+            token_val = row["session_token"] if isinstance(row, dict) or hasattr(row, "__getitem__") else row[0]
+            if secrets.compare_digest(token_val, token):
+                cfg = USERS[username]
+                return {
+                    "username": username,
+                    "role": cfg["role"],
+                    "name": cfg["name"],
+                    "counter_name": cfg["counter_name"]
+                }
+        return None
+    except Exception as e:
+        print(f"[WARN] Error fetching active session for {username}: {e}")
         return None
     finally:
         db.close()
@@ -328,7 +351,7 @@ def fmt_serial(prefix, n):
     return f"{prefix}{n:05d}"
 
 
-COLUMNS = ["Token No", "Type", "Price (₹)", "Name", "Mobile", "Payment", "Date", "Time", "Issued By", "Counter"]
+COLUMNS = ["Token No", "Type", "Price (₹)", "Status", "Name", "Mobile", "Payment", "Date", "Time", "Issued By", "Counter"]
 
 
 def row_val(r, key, default=None):
@@ -355,15 +378,29 @@ def build_workbook(rows, title="Tokens"):
         cell.alignment = Alignment(horizontal="center")
 
     total_amount = 0
+    active_count = 0
+    void_count = 0
+
+    void_fill = PatternFill("solid", fgColor="FDE8E8")
+    void_font = Font(color="B00020", bold=True)
+
     for r in rows:
         price_val = row_val(r, "price")
         if price_val is None:
             price_val = PRICES.get(row_val(r, "type_key"), 0)
-        total_amount += int(price_val)
-        ws.append([
+        status_val = row_val(r, "status", "ACTIVE")
+
+        if status_val == "ACTIVE":
+            total_amount += int(price_val)
+            active_count += 1
+        else:
+            void_count += 1
+
+        row_cells = [
             row_val(r, "serial", ""),
             row_val(r, "token_type", ""),
             int(price_val),
+            status_val,
             row_val(r, "name", ""),
             row_val(r, "mobile", ""),
             row_val(r, "payment", ""),
@@ -371,18 +408,26 @@ def build_workbook(rows, title="Tokens"):
             row_val(r, "created_time", ""),
             row_val(r, "created_by", "admin"),
             row_val(r, "counter_name", "Counter")
-        ])
+        ]
+        ws.append(row_cells)
 
-    # Summary row
+        if status_val == "VOID":
+            current_row_idx = ws.max_row
+            for col_idx in range(1, len(COLUMNS) + 1):
+                c = ws.cell(row=current_row_idx, column=col_idx)
+                c.fill = void_fill
+            ws.cell(row=current_row_idx, column=4).font = void_font
+
+    # Summary row (active collection only)
     summary_row = len(rows) + 2
-    ws.cell(row=summary_row, column=2, value="TOTAL:").font = Font(bold=True)
+    ws.cell(row=summary_row, column=1, value=f"{active_count} Active ({void_count} Void)").font = Font(bold=True)
+    ws.cell(row=summary_row, column=2, value="TOTAL (ACTIVE):").font = Font(bold=True)
     ws.cell(row=summary_row, column=3, value=total_amount).font = Font(bold=True)
-    ws.cell(row=summary_row, column=1, value=f"{len(rows)} Tokens").font = Font(bold=True)
 
-    col_widths = [12, 16, 11, 26, 14, 10, 12, 13, 14, 16]
+    col_widths = [12, 16, 11, 10, 26, 14, 10, 12, 13, 14, 16]
     for i, w in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    for row in ws.iter_rows(min_row=2, min_col=5, max_col=5):
+    for row in ws.iter_rows(min_row=2, min_col=6, max_col=6):
         row[0].number_format = "@"
     ws.freeze_panes = "A2"
     return wb
@@ -410,11 +455,16 @@ def token_json(r):
     price_val = row_val(r, "price")
     if price_val is None:
         price_val = PRICES.get(row_val(r, "type_key"), 0)
+    status_val = row_val(r, "status", "ACTIVE")
     return {
         "id": row_val(r, "id"),
         "serial": row_val(r, "serial", ""),
         "type": row_val(r, "token_type", ""),
         "price": int(price_val),
+        "status": status_val,
+        "is_void": (status_val == "VOID"),
+        "voided_at": row_val(r, "voided_at"),
+        "voided_by": row_val(r, "voided_by"),
         "name": row_val(r, "name", ""),
         "mobile": row_val(r, "mobile", ""),
         "payment": row_val(r, "payment", ""),
@@ -423,7 +473,6 @@ def token_json(r):
         "date": row_val(r, "created_date", ""),
         "time": row_val(r, "created_time", "")
     }
-
 
 
 @app.post("/api/auth/login")
@@ -469,7 +518,6 @@ def login():
             db.commit()
     finally:
         db.close()
-
 
     session["token"] = token
     session["user"] = user["username"]
@@ -518,12 +566,19 @@ def counters(user):
         categories = {}
         for c in db.execute("SELECT * FROM counters").fetchall():
             tk = c["type_key"]
-            count_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key = ?", (tk,))
+            # Active count
+            count_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key = ? AND status = 'ACTIVE'", (tk,))
             count_row = count_cur.fetchone()
             tot_count = list(count_row.values())[0] if isinstance(count_row, dict) else count_row[0]
 
+            # Void count
+            void_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key = ? AND status = 'VOID'", (tk,))
+            void_row = void_cur.fetchone()
+            void_count = list(void_row.values())[0] if isinstance(void_row, dict) else void_row[0]
+
+            # Current user active count
             user_count_cur = db.execute(
-                "SELECT COUNT(*) FROM tokens WHERE type_key = ? AND LOWER(created_by) = ?",
+                "SELECT COUNT(*) FROM tokens WHERE type_key = ? AND status = 'ACTIVE' AND LOWER(created_by) = ?",
                 (tk, user["username"].lower())
             )
             user_count_row = user_count_cur.fetchone()
@@ -533,29 +588,39 @@ def counters(user):
                 "label": c["label"],
                 "price": PRICES.get(tk, 0),
                 "issued": tot_count,
+                "voided": void_count,
                 "user_issued": user_count,
                 "next": fmt_serial(c["prefix"], c["last_no"] + 1)
             }
 
-        # Breakdown stats for admin
+        # Breakdown stats for admin (active vs void)
         counter_breakdown = {}
         if user["role"] == "admin":
             for ukey in USERS:
-                c_cur = db.execute("SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ?", (ukey,))
+                c_cur = db.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ? AND status = 'ACTIVE'",
+                    (ukey,)
+                )
                 c_row = c_cur.fetchone()
                 if isinstance(c_row, dict):
                     vals = list(c_row.values())
                     cnt, amt = vals[0], vals[1]
                 else:
                     cnt, amt = c_row[0], c_row[1]
+
+                v_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE LOWER(created_by) = ? AND status = 'VOID'", (ukey,))
+                v_row = v_cur.fetchone()
+                v_cnt = list(v_row.values())[0] if isinstance(v_row, dict) else v_row[0]
+
                 counter_breakdown[ukey] = {
                     "name": USERS[ukey]["name"],
                     "count": cnt,
+                    "void_count": v_cnt,
                     "amount": int(amt)
                 }
 
         user_summary_cur = db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ?",
+            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ? AND status = 'ACTIVE'",
             (user["username"].lower(),)
         )
         user_sum_row = user_summary_cur.fetchone()
@@ -579,6 +644,11 @@ def counters(user):
 @app.post("/api/tokens")
 @require_auth
 def create_token(user):
+    """
+    Atomically generates sequential tokens.
+    Thread-safe and process-safe with row locking (PostgreSQL FOR UPDATE / SQLite BEGIN IMMEDIATE).
+    Guarantees no race condition or duplicate serial numbers when multiple counters issue simultaneously.
+    """
     data = request.get_json(silent=True) or {}
     type_key = str(data.get("type", "")).strip().upper()
     name = re.sub(r"\s+", " ", str(data.get("name", ""))).strip()
@@ -599,55 +669,58 @@ def create_token(user):
     if payment not in ("Cash", "UPI"):
         return jsonify(error="Select a payment type: Cash or UPI."), 400
 
-    db = connect()
-    try:
-        if not db.is_pg:
-            db.execute("BEGIN IMMEDIATE")
-            cur = db.execute("SELECT * FROM counters WHERE type_key = ?", (type_key,))
-        else:
-            cur = db.execute("SELECT * FROM counters WHERE type_key = ? FOR UPDATE", (type_key,))
+    # Acquire threading lock for local multi-thread serialization
+    with db_lock:
+        db = connect()
+        try:
+            if not db.is_pg:
+                db.execute("BEGIN IMMEDIATE")
+                cur = db.execute("SELECT * FROM counters WHERE type_key = ?", (type_key,))
+            else:
+                cur = db.execute("SELECT * FROM counters WHERE type_key = ? FOR UPDATE", (type_key,))
 
-        c = cur.fetchone()
-        if c is None:
+            c = cur.fetchone()
+            if c is None:
+                db.rollback()
+                return jsonify(error="Unknown token type."), 400
+
+            unit_price = PRICES.get(type_key, 0)
+            start_no = c["last_no"]
+            end_no = start_no + quantity
+            date, time_, iso = now_parts()
+            created_tokens = []
+
+            for n in range(start_no + 1, end_no + 1):
+                serial = fmt_serial(c["prefix"], n)
+                db.execute(
+                    "INSERT INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment,"
+                    " created_by, counter_name, created_date, created_time, created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (serial, type_key, c["label"], unit_price, "ACTIVE", name, mobile, payment,
+                     user["username"], user["counter_name"], date, time_, iso)
+                )
+                created_tokens.append({
+                    "serial": serial,
+                    "type": c["label"],
+                    "price": unit_price,
+                    "status": "ACTIVE",
+                    "name": name,
+                    "mobile": mobile,
+                    "payment": payment,
+                    "created_by": user["username"],
+                    "counter_name": user["counter_name"],
+                    "date": date,
+                    "time": time_
+                })
+
+            db.execute("UPDATE counters SET last_no = ? WHERE type_key = ?", (end_no, type_key))
+            db.commit()
+            refresh_excel_file(db)
+        except Exception:
             db.rollback()
-            return jsonify(error="Unknown token type."), 400
-
-        unit_price = PRICES.get(type_key, 0)
-        start_no = c["last_no"]
-        end_no = start_no + quantity
-        date, time_, iso = now_parts()
-        created_tokens = []
-
-        for n in range(start_no + 1, end_no + 1):
-            serial = fmt_serial(c["prefix"], n)
-            db.execute(
-                "INSERT INTO tokens (serial, type_key, token_type, price, name, mobile, payment,"
-                " created_by, counter_name, created_date, created_time, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (serial, type_key, c["label"], unit_price, name, mobile, payment,
-                 user["username"], user["counter_name"], date, time_, iso)
-            )
-            created_tokens.append({
-                "serial": serial,
-                "type": c["label"],
-                "price": unit_price,
-                "name": name,
-                "mobile": mobile,
-                "payment": payment,
-                "created_by": user["username"],
-                "counter_name": user["counter_name"],
-                "date": date,
-                "time": time_
-            })
-
-        db.execute("UPDATE counters SET last_no = ? WHERE type_key = ?", (end_no, type_key))
-        db.commit()
-        refresh_excel_file(db)
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+            raise
+        finally:
+            db.close()
 
     res = {
         "tokens": created_tokens,
@@ -658,6 +731,7 @@ def create_token(user):
         "serial": created_tokens[0]["serial"],
         "type": created_tokens[0]["type"],
         "price": unit_price,
+        "status": "ACTIVE",
         "name": created_tokens[0]["name"],
         "mobile": created_tokens[0]["mobile"],
         "payment": created_tokens[0]["payment"],
@@ -681,9 +755,64 @@ def list_tokens(user):
         db.close()
 
 
+@app.put("/api/tokens/<serial>")
+@require_auth
+def edit_token(user, serial):
+    """
+    Admin-only token details update.
+    Allows correcting customer name, mobile, and payment mode.
+    """
+    if user["role"] != "admin":
+        return jsonify(error="Permission denied: Only Administrator can edit token details."), 403
+
+    serial = str(serial).strip().upper()
+    data = request.get_json(silent=True) or {}
+    name = re.sub(r"\s+", " ", str(data.get("name", ""))).strip()
+    mobile = str(data.get("mobile", "")).strip()
+    payment = str(data.get("payment", "")).strip()
+
+    if not name or len(name) > 60:
+        return jsonify(error="Enter customer name (max 60 characters)."), 400
+    if not re.fullmatch(r"\d{10}", mobile):
+        return jsonify(error="Enter a valid 10-digit mobile number."), 400
+    if payment not in ("Cash", "UPI"):
+        return jsonify(error="Select a valid payment type: Cash or UPI."), 400
+
+    db = connect()
+    try:
+        row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
+        if not row:
+            return jsonify(error=f"Token {serial} was not found."), 404
+
+        current_status = row_val(row, "status", "ACTIVE")
+        if current_status == "VOID":
+            return jsonify(error=f"Cannot edit token {serial} because it has been VOIDED."), 400
+
+        db.execute(
+            "UPDATE tokens SET name = ?, mobile = ?, payment = ? WHERE UPPER(serial) = ?",
+            (name, mobile, payment, serial)
+        )
+        db.commit()
+        refresh_excel_file(db)
+
+        updated_row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
+        return jsonify(success=True, token=token_json(updated_row), message=f"Token {serial} updated successfully.")
+    finally:
+        db.close()
+
+
+@app.post("/api/tokens/<serial>/void")
 @app.delete("/api/tokens/<serial>")
 @require_auth
-def delete_token(user, serial):
+def void_token(user, serial):
+    """
+    Admin-only token voiding.
+    Marks the token as VOID without rolling back or decrementing the serial counter.
+    Future token serials will strictly continue forward.
+    """
+    if user["role"] != "admin":
+        return jsonify(error="Permission denied: Only Administrator can void tokens."), 403
+
     serial = str(serial).strip().upper()
     db = connect()
     try:
@@ -691,16 +820,27 @@ def delete_token(user, serial):
         if not row:
             return jsonify(error=f"Token {serial} was not found."), 404
 
-        creator = row_val(row, "created_by", "admin")
-        if user["role"] != "admin" and creator.lower() != user["username"].lower():
-            return jsonify(error="Permission denied: You can only cancel tokens issued by your counter."), 403
+        current_status = row_val(row, "status", "ACTIVE")
+        if current_status == "VOID":
+            return jsonify(error=f"Token {serial} is already marked as VOID."), 400
 
-        db.execute("DELETE FROM tokens WHERE UPPER(serial) = ?", (serial,))
+        now_iso = datetime.now().isoformat()
+        db.execute(
+            "UPDATE tokens SET status = 'VOID', voided_at = ?, voided_by = ? WHERE UPPER(serial) = ?",
+            (now_iso, user["username"], serial)
+        )
         db.commit()
+        # NOTE: counters.last_no is intentionally NEVER decremented!
         refresh_excel_file(db)
     finally:
         db.close()
-    return jsonify(success=True, deleted=serial, message=f"Token {serial} cancelled and removed from database and Excel.")
+
+    return jsonify(
+        success=True,
+        serial=serial,
+        status="VOID",
+        message=f"Token {serial} has been VOIDED. The serial sequence remains at its current position."
+    )
 
 
 @app.get("/api/system/status")
@@ -750,9 +890,25 @@ def import_excel(user):
                 continue
 
             token_type = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+            status = "ACTIVE"
             
-            # Check if row has Price column (format with 10 columns vs legacy 7 columns)
-            if len(row) >= 10:
+            # Format detection: 11 columns with Status vs 10 columns vs legacy 7 columns
+            if len(row) >= 11:
+                try:
+                    price = int(row[2]) if row[2] else 0
+                except (ValueError, TypeError):
+                    price = 0
+                status = str(row[3]).strip().upper() if len(row) > 3 and row[3] else "ACTIVE"
+                if status != "VOID":
+                    status = "ACTIVE"
+                name = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+                mobile = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+                payment = str(row[6]).strip() if len(row) > 6 and row[6] else "Cash"
+                c_date = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+                c_time = str(row[8]).strip() if len(row) > 8 and row[8] else ""
+                c_user = str(row[9]).strip() if len(row) > 9 and row[9] else "admin"
+                c_name = str(row[10]).strip() if len(row) > 10 and row[10] else "Counter"
+            elif len(row) == 10:
                 try:
                     price = int(row[2]) if row[2] else 0
                 except (ValueError, TypeError):
@@ -798,15 +954,15 @@ def import_excel(user):
             now_iso = datetime.now().isoformat()
             if db.is_pg:
                 db.execute("""
-                    INSERT INTO tokens (serial, type_key, token_type, price, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (serial) DO NOTHING
-                """, (serial, type_key, token_type, price, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
+                """, (serial, type_key, token_type, price, status, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
             else:
                 db.execute("""
-                    INSERT OR IGNORE INTO tokens (serial, type_key, token_type, price, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (serial, type_key, token_type, price, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
+                    INSERT OR IGNORE INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (serial, type_key, token_type, price, status, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
             imported += 1
 
         for tk, max_n in max_nums.items():

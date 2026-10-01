@@ -16,7 +16,7 @@ header p{margin:3px 0 0;font-size:14px;letter-spacing:.05em}
 .user-badge{background:rgba(247,230,184,.18);border:1px solid #f7e6b8;border-radius:20px;padding:3px 14px;font-weight:600;letter-spacing:.02em}
 .logout-btn{background:transparent;border:1px solid #f7e6b8;color:#f7e6b8;border-radius:4px;padding:4px 12px;cursor:pointer;font-family:Arial,sans-serif;font-size:12px;transition:all .15s}
 .logout-btn:hover{background:#f7e6b8;color:var(--maroon)}
-main{max-width:880px;margin:0 auto;padding:24px 16px 60px}
+main{max-width:920px;margin:0 auto;padding:24px 16px 60px}
 h2{font-size:22px;margin:0 0 16px}
 .choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
 .choice{background:var(--card);border:2px solid var(--line);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;font:inherit;color:inherit;transition:all .18s;box-shadow:0 2px 6px rgba(0,0,0,.04)}
@@ -25,7 +25,7 @@ h2{font-size:22px;margin:0 0 16px}
 .choice .card-price{display:inline-block;background:var(--maroon);color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;padding:3px 12px;border-radius:14px;margin:6px 0 8px}
 .choice .choice-serial{font-family:Arial,sans-serif;font-size:12px;color:#7a6858;display:block}
 .choice .choice-next{font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:var(--gold);display:block;margin-top:6px}
-.panel{background:var(--card);border:2px solid var(--line);border-radius:8px;padding:22px 24px;max-width:500px;margin:0 auto;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.panel{background:var(--card);border:2px solid var(--line);border-radius:8px;padding:24px;max-width:500px;margin:0 auto;box-shadow:0 4px 12px rgba(0,0,0,.05)}
 .login-panel{max-width:400px;margin:40px auto 0}
 label{display:block;font-family:Arial,sans-serif;font-size:14px;font-weight:600;margin:14px 0 5px}
 input{width:100%;padding:11px 12px;font-size:17px;border:2px solid var(--line);border-radius:4px;background:#fff;font-family:Arial,sans-serif}
@@ -50,17 +50,6 @@ button.s:hover{background:#fff0d4}
 .next{font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-bottom:8px}
 .hidden{display:none!important}
 
-/* Two-step confirm box */
-.save-confirm-box{background:#fdf5e2;border:2px solid var(--gold);border-radius:8px;padding:16px;margin-top:18px;box-shadow:0 4px 12px rgba(185,138,46,.15)}
-.confirm-banner{border-bottom:1px dashed var(--gold);padding-bottom:12px;margin-bottom:12px}
-.confirm-title{font-size:16px;font-weight:700;color:var(--maroon);display:flex;align-items:center;gap:6px}
-.confirm-desc{font-family:Arial,sans-serif;font-size:13px;margin:5px 0 0;line-height:1.45;color:#4a3828}
-.confirm-details{font-family:Arial,sans-serif;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:8px 12px;margin-top:8px;font-weight:600;color:var(--ink)}
-.confirm-save-btn{background:#1b5e20!important;border-color:#1b5e20!important;color:#fff!important;flex:2!important}
-.confirm-save-btn:hover{background:#124116!important}
-.discard-btn{color:var(--red)!important;border-color:var(--red)!important}
-.discard-btn:hover{background:#ffebee!important}
-
 /* Tools & admin tabs */
 .tools{margin-top:36px;border-top:1px solid var(--line);padding-top:18px}
 .counts{font-family:Arial,sans-serif;font-size:14px;margin:0 0 10px;font-weight:600}
@@ -74,8 +63,27 @@ button.s:hover{background:#fff0d4}
 table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;background:#fff}
 th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;white-space:nowrap}
 th{background:#efe3c6;color:var(--maroon);font-weight:700}
-.del-btn{background:#fff;color:var(--red);border:1px solid var(--red);padding:3px 9px;font-size:12px;border-radius:3px;cursor:pointer;font-family:Arial,sans-serif;font-weight:700}
-.del-btn:hover{background:var(--red);color:#fff}
+
+/* Actions & Badges */
+.action-btn{padding:3px 9px;font-size:12px;border-radius:3px;cursor:pointer;font-family:Arial,sans-serif;font-weight:700;margin-right:4px}
+.edit-btn{background:#fff;color:var(--maroon);border:1px solid var(--maroon)}
+.edit-btn:hover{background:var(--maroon);color:#fff}
+.void-btn{background:#fff;color:var(--red);border:1px solid var(--red)}
+.void-btn:hover{background:var(--red);color:#fff}
+.badge-active{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#e8f5e9;color:#1b5e20}
+.badge-void{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#ffebee;color:#b00020}
+.row-void{background:#fff5f5!important;opacity:.8}
+.strike{text-decoration:line-through;color:#888}
+
+/* Modal dialog */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal-card{background:var(--card);border:2px solid var(--maroon);border-radius:8px;padding:24px;width:92%;max-width:440px;box-shadow:0 8px 24px rgba(0,0,0,.25);position:relative}
+.modal-header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:10px}
+.modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--ink);line-height:1}
+
+/* Toast alert */
+.toast{position:fixed;bottom:24px;right:24px;background:#1b5e20;color:#fff;padding:12px 20px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.2);font-family:Arial,sans-serif;font-size:14px;font-weight:700;z-index:10000;display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
 
 /* Thermal printer print area */
 #printArea{display:none}
@@ -95,7 +103,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 @media print{
  @page{size:80mm auto;margin:2mm 0}
  body{background:#fff;margin:0;padding:0}
- header,main,#loginSection{display:none!important}
+ header,main,#loginSection,#editModal,.toast{display:none!important}
  #printArea{display:block}
  .token{
    width:72mm!important;
@@ -136,7 +144,6 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     </div>
   </div>
 </section>
-
 
 <main id="appView" class="hidden">
   <section id="stepChoose">
@@ -194,27 +201,10 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 
       <div class="err" id="err"></div>
 
-      <!-- Initial Action Row: Step 1 Print -->
+      <!-- Single Action: Automatically Saves & Prints -->
       <div class="row" id="formActionRow">
-        <button type="button" class="p" id="printFirstBtn">🖨️ Step 1: Print Token Slip(s)</button>
+        <button type="button" class="p" id="issueBtn">🖨️ Print &amp; Issue Token</button>
         <button type="button" class="s" id="backBtn">Back</button>
-      </div>
-
-      <!-- Step 2: Confirmation Box (Displayed after Print) -->
-      <div id="saveConfirmBox" class="save-confirm-box hidden">
-        <div class="confirm-banner">
-          <div class="confirm-title">🖨️ Step 1 Done: Tokens Sent to Printer!</div>
-          <p class="confirm-desc">
-            Please verify the printed slips. <b>The token is NOT saved to the database yet!</b><br>
-            Click <b>"Confirm &amp; Save"</b> to permanently store this transaction and update serial numbers.
-          </p>
-          <div class="confirm-details" id="confirmDetails"></div>
-        </div>
-        <div class="row" style="margin-top:12px">
-          <button type="button" class="p confirm-save-btn" id="confirmSaveBtn">💾 Step 2: Confirm &amp; Save to Database</button>
-          <button type="button" class="s" id="reprintBtn">🖨️ Re-Print</button>
-          <button type="button" class="s discard-btn" id="discardBtn">❌ Discard</button>
-        </div>
       </div>
     </div>
   </section>
@@ -236,7 +226,8 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="row">
       <button class="s" id="xlsBtn">Download Excel</button>
       <button class="s" id="viewBtn">View Records</button>
-      <button class="s" id="cancelPromptBtn" style="color:var(--red);border-color:var(--red)">Cancel Token by Serial</button>
+      <button class="s hidden" id="adminVoidBtn" style="color:var(--red);border-color:var(--red)">🚫 Void Token</button>
+      <button class="s hidden" id="adminEditBtn" style="color:var(--maroon);border-color:var(--maroon)">✏️ Edit Token</button>
       <button class="s hidden" id="importBtn" style="color:var(--green);border-color:var(--green)">Restore from Excel</button>
       <input type="file" id="importFileInput" accept=".xlsx" style="display:none">
     </div>
@@ -246,6 +237,34 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
   </section>
 </main>
 
+<!-- Admin Edit Modal Dialog -->
+<div id="editModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:18px;color:var(--maroon)">✏️ Edit Token Details</h3>
+      <button type="button" class="modal-close" id="editModalClose">&times;</button>
+    </div>
+    <div style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin:10px 0 14px">
+      Editing details for Token: <b id="editModalSerial" style="color:var(--maroon);font-size:16px"></b>
+    </div>
+    <label for="editName">Customer Name</label>
+    <input id="editName" type="text" autocomplete="off" maxlength="60">
+    <label for="editMobile">Mobile Number</label>
+    <input id="editMobile" type="tel" inputmode="numeric" maxlength="10" autocomplete="off">
+    <label>Payment Method</label>
+    <div class="pay">
+      <label><input type="radio" name="editPay" value="Cash" id="editPayCash"><span>Cash</span></label>
+      <label><input type="radio" name="editPay" value="UPI" id="editPayUPI"><span>UPI</span></label>
+    </div>
+    <div class="err" id="editErr"></div>
+    <div class="row" style="margin-top:16px">
+      <button type="button" class="p" id="editSaveBtn">Save Changes</button>
+      <button type="button" class="s" id="editCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
 <div id="printArea"></div>
 
 <script>
@@ -257,12 +276,21 @@ var currentUser = null;
 var current = null;
 var counters = {};
 var activeCounterFilter = 'all';
-var pendingTokensBatch = null;
 var busy = false;
+var activeEditSerial = null;
+var toastTimer = null;
 
 // Preload the logo image into browser cache
 var logoImg = new Image();
 logoImg.src = '/logo.jpg';
+
+function showToast(msg){
+  var el = document.getElementById('toast');
+  el.innerHTML = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 4000);
+}
 
 function esc(s){
   return String(s || '').replace(/[&<>"]/g, function(c){
@@ -308,9 +336,13 @@ function showApp(user){
 
   if(user.role === 'admin'){
     document.getElementById('adminSummaryWrap').classList.remove('hidden');
+    document.getElementById('adminVoidBtn').classList.remove('hidden');
+    document.getElementById('adminEditBtn').classList.remove('hidden');
     document.getElementById('importBtn').classList.remove('hidden');
   } else {
     document.getElementById('adminSummaryWrap').classList.add('hidden');
+    document.getElementById('adminVoidBtn').classList.add('hidden');
+    document.getElementById('adminEditBtn').classList.add('hidden');
     document.getElementById('importBtn').classList.add('hidden');
   }
   refresh();
@@ -367,7 +399,6 @@ function doLogin(){
   });
 }
 
-
 document.getElementById('loginBtn').onclick = doLogin;
 document.getElementById('loginPass').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
 document.getElementById('loginUser').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
@@ -401,11 +432,13 @@ function refresh(){
   return api('/api/counters').then(function(res){
     counters = res.categories || {};
     var cats = counters;
-    var tot = 0;
+    var totActive = 0;
+    var totVoid = 0;
     Object.keys(TYPES).forEach(function(k){
       if(cats[k]){
         document.getElementById('nx-' + k).textContent = 'Next: ' + cats[k].next;
-        tot += cats[k].issued;
+        totActive += (cats[k].issued || 0);
+        totVoid += (cats[k].voided || 0);
       }
     });
 
@@ -414,14 +447,14 @@ function refresh(){
       var sumHtml = '';
       var totalRev = 0;
       Object.keys(b).forEach(function(uk){
-        sumHtml += '<div class="summary-card"><b>' + esc(b[uk].name) + '</b>' + b[uk].count + ' tokens &bull; ₹' + b[uk].amount.toLocaleString('en-IN') + '</div>';
+        sumHtml += '<div class="summary-card"><b>' + esc(b[uk].name) + '</b>' + b[uk].count + ' active' + (b[uk].void_count ? ' (' + b[uk].void_count + ' void)' : '') + ' &bull; ₹' + b[uk].amount.toLocaleString('en-IN') + '</div>';
         totalRev += b[uk].amount;
       });
       document.getElementById('adminSummary').innerHTML = sumHtml;
-      document.getElementById('counts').innerHTML = '<b>Combined Total:</b> ' + tot + ' tokens issued across all counters &bull; Total Collection: <b>₹' + totalRev.toLocaleString('en-IN') + '</b>';
+      document.getElementById('counts').innerHTML = '<b>Combined Total:</b> ' + totActive + ' active tokens' + (totVoid ? ' (' + totVoid + ' voided)' : '') + ' &bull; Total Collection: <b>₹' + totalRev.toLocaleString('en-IN') + '</b>';
     } else {
       var myStats = res.myStats || { count: 0, amount: 0 };
-      document.getElementById('counts').innerHTML = '<b>' + esc(currentUser.name || currentUser.username) + ':</b> ' + myStats.count + ' tokens issued &bull; Collection: <b>₹' + myStats.amount.toLocaleString('en-IN') + '</b>';
+      document.getElementById('counts').innerHTML = '<b>' + esc(currentUser.name || currentUser.username) + ':</b> ' + myStats.count + ' active tokens issued &bull; Collection: <b>₹' + myStats.amount.toLocaleString('en-IN') + '</b>';
     }
 
     if(!document.getElementById('tableWrap').classList.contains('hidden')){
@@ -449,13 +482,13 @@ function updateQtyPreview(){
   var totalPrice = unitPrice * q;
 
   var prevEl = document.getElementById('qtyPreview');
-  var btnEl = document.getElementById('printFirstBtn');
+  var btnEl = document.getElementById('issueBtn');
   if(q === 1){
-    prevEl.textContent = 'Token to issue: ' + startSerial + '  |  Total: ₹' + totalPrice;
-    btnEl.textContent = '🖨️ Step 1: Print 2 Slips (Total: ₹' + totalPrice + ')';
+    prevEl.textContent = 'Next Token: ' + startSerial + '  |  Total: ₹' + totalPrice;
+    btnEl.textContent = '🖨️ Print & Issue Token (₹' + totalPrice + ')';
   } else {
-    prevEl.textContent = 'Tokens: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)  |  Total: ₹' + totalPrice + ' (' + q + ' × ₹' + unitPrice + ')';
-    btnEl.textContent = '🖨️ Step 1: Print ' + (q * 2) + ' Slips (' + q + ' pairs &bull; Total: ₹' + totalPrice + ')';
+    prevEl.textContent = 'Next Tokens: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)  |  Total: ₹' + totalPrice + ' (' + q + ' × ₹' + unitPrice + ')';
+    btnEl.textContent = '🖨️ Print & Issue ' + q + ' Tokens (₹' + totalPrice + ')';
   }
 }
 
@@ -466,7 +499,6 @@ document.querySelectorAll('.choice').forEach(function(b){
     document.getElementById('selTag').textContent = TYPES[current] + ' — ₹' + price + ' per token';
     document.getElementById('selNext').textContent = counters[current] ? 'Next serial begins at ' + counters[current].next : '';
     document.getElementById('quantity').value = '1';
-    resetFormState();
     updateQtyPreview();
     document.getElementById('stepChoose').classList.add('hidden');
     document.getElementById('stepForm').classList.remove('hidden');
@@ -475,18 +507,6 @@ document.querySelectorAll('.choice').forEach(function(b){
   };
 });
 
-function resetFormState(){
-  document.getElementById('formActionRow').classList.remove('hidden');
-  document.getElementById('saveConfirmBox').classList.add('hidden');
-  document.getElementById('name').disabled = false;
-  document.getElementById('mobile').disabled = false;
-  document.getElementById('quantity').disabled = false;
-  document.getElementById('qtyMinus').disabled = false;
-  document.getElementById('qtyPlus').disabled = false;
-  document.querySelectorAll('input[name="pay"]').forEach(function(p){ p.disabled = false; });
-  pendingTokensBatch = null;
-}
-
 function toChoose(){
   document.getElementById('stepForm').classList.add('hidden');
   document.getElementById('stepChoose').classList.remove('hidden');
@@ -494,7 +514,6 @@ function toChoose(){
   document.getElementById('mobile').value = '';
   document.getElementById('quantity').value = '1';
   document.querySelectorAll('input[name="pay"]').forEach(function(p){ p.checked = false; });
-  resetFormState();
   current = null;
   refresh();
 }
@@ -546,144 +565,70 @@ function tokenHTML(t, copy){
 }
 
 /* =========================================================
-   TWO-STEP FLOW:
-   Step 1: Print slips first without saving to DB.
-   Step 2: User verifies printer output & clicks "Confirm & Save".
+   AUTOMATIC SAVE & PRINT (ONE CLICK)
+   Saves atomically to DB & Excel, then prints official slips.
    ========================================================= */
 
-document.getElementById('printFirstBtn').onclick = function(){
+document.getElementById('issueBtn').onclick = function(){
+  if(busy) return;
   var name = document.getElementById('name').value.trim();
   var mobile = document.getElementById('mobile').value.trim();
   var qty = parseInt(document.getElementById('quantity').value, 10) || 1;
   var err = document.getElementById('err');
   var payEl = document.querySelector('input[name="pay"]:checked');
 
-  if(!name){ err.textContent = 'Please enter the customer name.'; return; }
+  if(!name){ err.textContent = 'Please enter customer name.'; return; }
   if(!/^\d{10}$/.test(mobile)){ err.textContent = 'Please enter a valid 10-digit mobile number.'; return; }
   if(qty < 1 || qty > 100){ err.textContent = 'Please enter a quantity between 1 and 100.'; return; }
   if(!payEl){ err.textContent = 'Please select a payment method: Cash or UPI.'; return; }
   err.textContent = '';
 
-  var pfx = PREFIXES[current];
-  var nextStr = (counters[current] && counters[current].next) || (pfx + '00001');
-  var match = nextStr.match(/\d+$/);
-  var startNo = match ? parseInt(match[0], 10) : 1;
-  var endNo = startNo + qty - 1;
-  var sParts = stamp(new Date());
-  var unitPrice = PRICES[current] || 0;
-  var totalAmount = unitPrice * qty;
-
-  var slips = [];
-  var serialLabels = [];
-  for(var n = startNo; n <= endNo; n++){
-    var ser = fmtSerial(pfx, n);
-    serialLabels.push(ser);
-    slips.push({
-      serial: ser,
-      type: TYPES[current],
-      price: unitPrice,
-      name: name,
-      mobile: mobile,
-      payment: payEl.value,
-      counter_name: currentUser.name || currentUser.username,
-      date: sParts.date,
-      time: sParts.time
-    });
-  }
-
-  // Save pending batch in memory
-  pendingTokensBatch = {
-    type: current,
-    name: name,
-    mobile: mobile,
-    payment: payEl.value,
-    quantity: qty,
-    unitPrice: unitPrice,
-    totalAmount: totalAmount,
-    serials: serialLabels,
-    slips: slips
-  };
-
-  // Generate HTML for thermal printing (Customer + Office copy with auto-cut spacer)
-  var printHtml = '';
-  slips.forEach(function(t){
-    printHtml += tokenHTML(t, 'Customer copy') + tokenHTML(t, 'Office copy');
-  });
-  document.getElementById('printArea').innerHTML = printHtml;
-
-  // Lock inputs so they cannot be altered mid-step
-  document.getElementById('name').disabled = true;
-  document.getElementById('mobile').disabled = true;
-  document.getElementById('quantity').disabled = true;
-  document.getElementById('qtyMinus').disabled = true;
-  document.getElementById('qtyPlus').disabled = true;
-  document.querySelectorAll('input[name="pay"]').forEach(function(p){ p.disabled = true; });
-
-  // Reveal Step 2 Confirmation Box
-  document.getElementById('formActionRow').classList.add('hidden');
-  document.getElementById('saveConfirmBox').classList.remove('hidden');
-
-  var summaryText = '<b>Type:</b> ' + esc(TYPES[current]) + ' &bull; ' +
-    '<b>Tokens:</b> ' + (serialLabels.length === 1 ? serialLabels[0] : (serialLabels[0] + ' to ' + serialLabels[serialLabels.length - 1] + ' (' + qty + ' tokens)')) + ' &bull; ' +
-    '<b>Amount:</b> ₹' + totalAmount + ' (' + payEl.value + ') &bull; ' +
-    '<b>Customer:</b> ' + esc(name) + ' (' + esc(mobile) + ')';
-  document.getElementById('confirmDetails').innerHTML = summaryText;
-
-  // Trigger browser print dialog
-  setTimeout(function(){ window.print(); }, 120);
-};
-
-// Re-print button
-document.getElementById('reprintBtn').onclick = function(){
-  if(!pendingTokensBatch) return;
-  window.print();
-};
-
-// Discard button
-document.getElementById('discardBtn').onclick = function(){
-  if(!confirm('Discard this transaction?\n\nNo tokens will be saved to the database, and serial numbers will NOT be incremented.')) return;
-  toChoose();
-};
-
-// Step 2: Confirm & Save to Database
-document.getElementById('confirmSaveBtn').onclick = function(){
-  if(busy || !pendingTokensBatch) return;
   busy = true;
   var btn = this;
   btn.disabled = true;
-  btn.textContent = 'Saving to Database...';
+  btn.textContent = '⏳ Saving & Generating Token...';
 
   api('/api/tokens', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      type: pendingTokensBatch.type,
-      name: pendingTokensBatch.name,
-      mobile: pendingTokensBatch.mobile,
-      payment: pendingTokensBatch.payment,
-      quantity: pendingTokensBatch.quantity
+      type: current,
+      name: name,
+      mobile: mobile,
+      payment: payEl.value,
+      quantity: qty
     })
   })
   .then(function(res){
-    var savedTokens = res.tokens || [res];
-    var firstSer = savedTokens[0].serial;
-    var lastSer = savedTokens[savedTokens.length - 1].serial;
-    var range = savedTokens.length === 1 ? firstSer : (firstSer + ' to ' + lastSer);
-    alert('✅ Transaction Confirmed & Saved!\n\nToken(s) ' + range + ' permanently stored in the PostgreSQL database and Excel.');
+    var tokensList = res.tokens || [res];
+
+    // Build slips for thermal printer
+    var printHtml = '';
+    tokensList.forEach(function(t){
+      printHtml += tokenHTML(t, 'Customer copy') + tokenHTML(t, 'Office copy');
+    });
+    document.getElementById('printArea').innerHTML = printHtml;
+
+    var serText = tokensList.length === 1 ? tokensList[0].serial : (tokensList[0].serial + ' to ' + tokensList[tokensList.length - 1].serial);
+    showToast('✅ Saved & Issued: ' + serText + ' (' + esc(tokensList[0].name) + ') &bull; ₹' + res.total_amount);
+
     toChoose();
+    setTimeout(function(){ window.print(); }, 120);
   })
   .catch(function(e){
-    alert('Error saving tokens: ' + e.message);
-    btn.disabled = false;
-    btn.textContent = '💾 Step 2: Confirm & Save to Database';
+    err.textContent = 'Error: ' + e.message;
   })
   .then(function(){
     busy = false;
+    btn.disabled = false;
+    updateQtyPreview();
   });
 };
 
 /* =========================================================
-   RECORDS TABLE & ADMIN FILTERS
+   RECORDS TABLE & ROLE-BASED ACCESS
+   Admin: has full Edit and Void controls
+   Counters: read-only records without Edit/Void buttons
    ========================================================= */
 
 function renderTable(){
@@ -699,32 +644,52 @@ function renderTable(){
       return;
     }
 
+    var isAdmin = (currentUser.role === 'admin');
+
     var h = '<table><tr>' +
       '<th>Serial</th>' +
       '<th>Type</th>' +
       '<th>Price</th>' +
+      '<th>Status</th>' +
       '<th>Name</th>' +
       '<th>Mobile</th>' +
       '<th>Payment</th>' +
-      '<th>Counter</th>' +
+      (isAdmin ? '<th>Counter</th>' : '') +
       '<th>Date</th>' +
       '<th>Time</th>' +
-      '<th>Action</th>' +
+      (isAdmin ? '<th>Action</th>' : '') +
       '</tr>';
 
     r.forEach(function(x){
-      h += '<tr>' +
-        '<td><b>' + esc(x.serial) + '</b></td>' +
+      var isVoid = (x.status === 'VOID');
+      var rowClass = isVoid ? ' class="row-void"' : '';
+      var serialDisplay = isVoid ? '<span class="strike"><b>' + esc(x.serial) + '</b></span>' : '<b>' + esc(x.serial) + '</b>';
+      var statusBadge = isVoid ? '<span class="badge-void">VOID</span>' : '<span class="badge-active">ACTIVE</span>';
+
+      h += '<tr' + rowClass + '>' +
+        '<td>' + serialDisplay + '</td>' +
         '<td>' + esc(x.type) + '</td>' +
         '<td><b>₹' + esc(x.price) + '</b></td>' +
-        '<td>' + esc(x.name) + '</td>' +
-        '<td>' + esc(x.mobile) + '</td>' +
-        '<td>' + esc(x.payment) + '</td>' +
-        '<td>' + esc(x.counter_name || x.created_by) + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td id="cell-name-' + esc(x.serial) + '">' + esc(x.name) + '</td>' +
+        '<td id="cell-mobile-' + esc(x.serial) + '">' + esc(x.mobile) + '</td>' +
+        '<td id="cell-pay-' + esc(x.serial) + '">' + esc(x.payment) + '</td>' +
+        (isAdmin ? '<td>' + esc(x.counter_name || x.created_by) + '</td>' : '') +
         '<td>' + esc(x.date) + '</td>' +
-        '<td>' + esc(x.time) + '</td>' +
-        '<td><button class="del-btn" onclick="cancelToken(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\')">Cancel</button></td>' +
-      '</tr>';
+        '<td>' + esc(x.time) + '</td>';
+
+      if(isAdmin){
+        h += '<td>';
+        if(isVoid){
+          h += '<span style="color:#b00020;font-size:12px;font-weight:700">VOIDED</span>';
+        } else {
+          h += '<button class="action-btn edit-btn" onclick="openEditModal(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\',\'' + esc(x.mobile) + '\',\'' + esc(x.payment) + '\')">✏️ Edit</button>' +
+               '<button class="action-btn void-btn" onclick="voidToken(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\')">🚫 Void</button>';
+        }
+        h += '</td>';
+      }
+
+      h += '</tr>';
     });
 
     wrap.innerHTML = h + '</table>';
@@ -733,15 +698,84 @@ function renderTable(){
   });
 }
 
-function cancelToken(serial, name){
-  var msg = 'Are you sure you want to cancel and delete token ' + serial;
+/* =========================================================
+   ADMIN EDIT MODAL
+   ========================================================= */
+
+function openEditModal(serial, name, mobile, pay){
+  activeEditSerial = serial;
+  document.getElementById('editModalSerial').textContent = serial;
+  document.getElementById('editName').value = name || '';
+  document.getElementById('editMobile').value = mobile || '';
+  document.getElementById('editErr').textContent = '';
+
+  if(pay === 'UPI'){
+    document.getElementById('editPayUPI').checked = true;
+  } else {
+    document.getElementById('editPayCash').checked = true;
+  }
+
+  document.getElementById('editModal').classList.remove('hidden');
+  document.getElementById('editName').focus();
+}
+
+function closeEditModal(){
+  document.getElementById('editModal').classList.add('hidden');
+  activeEditSerial = null;
+}
+
+document.getElementById('editModalClose').onclick = closeEditModal;
+document.getElementById('editCancelBtn').onclick = closeEditModal;
+
+document.getElementById('editSaveBtn').onclick = function(){
+  if(!activeEditSerial) return;
+  var name = document.getElementById('editName').value.trim();
+  var mobile = document.getElementById('editMobile').value.trim();
+  var payEl = document.querySelector('input[name="editPay"]:checked');
+  var err = document.getElementById('editErr');
+
+  if(!name){ err.textContent = 'Please enter customer name.'; return; }
+  if(!/^\d{10}$/.test(mobile)){ err.textContent = 'Please enter a valid 10-digit mobile number.'; return; }
+  if(!payEl){ err.textContent = 'Please select payment method.'; return; }
+  err.textContent = '';
+
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  api('/api/tokens/' + encodeURIComponent(activeEditSerial), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name, mobile: mobile, payment: payEl.value })
+  })
+  .then(function(res){
+    showToast('✅ Token ' + activeEditSerial + ' updated successfully!');
+    closeEditModal();
+    renderTable();
+  })
+  .catch(function(e){
+    err.textContent = e.message;
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+  });
+};
+
+/* =========================================================
+   ADMIN VOID LOGIC (STRICTLY NON-ROLLING)
+   ========================================================= */
+
+function voidToken(serial, name){
+  var msg = '⚠️ Are you sure you want to VOID Token ' + serial;
   if(name) msg += ' (' + name + ')';
-  msg += '?\n\nThis will remove it immediately from both the database and the Excel file.';
+  msg += '?\n\n• The token will be marked VOID and excluded from collection revenue.\n• The next serial numbers will strictly CONTINUE FORWARD and will NOT roll back.';
+
   if(!confirm(msg)) return;
 
-  api('/api/tokens/' + encodeURIComponent(serial), { method: 'DELETE' })
+  api('/api/tokens/' + encodeURIComponent(serial) + '/void', { method: 'POST' })
     .then(function(res){
-      alert(res.message || ('Token ' + serial + ' cancelled successfully.'));
+      showToast('🚫 Token ' + serial + ' has been marked VOID.');
       refresh();
     })
     .catch(function(e){
@@ -749,10 +783,29 @@ function cancelToken(serial, name){
     });
 }
 
-document.getElementById('cancelPromptBtn').onclick = function(){
-  var s = prompt('Enter Token Serial to cancel and delete (e.g. B00001, S00005, SA00002):');
+// Admin Toolbar Buttons
+document.getElementById('adminVoidBtn').onclick = function(){
+  var s = prompt('Enter Token Serial to VOID (e.g. B00001, S00005, SA00002):');
   if(!s || !s.trim()) return;
-  cancelToken(s.trim().toUpperCase());
+  voidToken(s.trim().toUpperCase());
+};
+
+document.getElementById('adminEditBtn').onclick = function(){
+  var s = prompt('Enter Token Serial to Edit (e.g. B00001, S00005, SA00002):');
+  if(!s || !s.trim()) return;
+  s = s.trim().toUpperCase();
+  api('/api/tokens').then(function(tokens){
+    var match = tokens.find(function(t){ return t.serial.toUpperCase() === s; });
+    if(!match){
+      alert('Token ' + s + ' was not found.');
+      return;
+    }
+    if(match.status === 'VOID'){
+      alert('Token ' + s + ' is VOID and cannot be edited.');
+      return;
+    }
+    openEditModal(match.serial, match.name, match.mobile, match.payment);
+  });
 };
 
 document.getElementById('viewBtn').onclick = function(){

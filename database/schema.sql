@@ -14,13 +14,16 @@ INSERT OR IGNORE INTO counters (type_key, label, prefix, last_no) VALUES
     ('SI', 'Silver',        'S',  0),
     ('SA', 'Saree',         'SA', 0);
 
--- Every issued token with price and counter identification.
+-- Every issued token with price, status, and counter identification.
 CREATE TABLE IF NOT EXISTS tokens (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     serial        TEXT NOT NULL UNIQUE,    -- B00001, S00001, SA00001 ...
     type_key      TEXT NOT NULL REFERENCES counters(type_key),
     token_type    TEXT NOT NULL,           -- Royal Enfield / Silver / Saree
     price         INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / VOID
+    voided_at     TEXT,
+    voided_by     TEXT,
     name          TEXT NOT NULL,
     mobile        TEXT NOT NULL,
     payment       TEXT NOT NULL CHECK (payment IN ('Cash', 'UPI')),
@@ -39,4 +42,3 @@ CREATE TABLE IF NOT EXISTS active_sessions (
     session_token TEXT NOT NULL,
     logged_in_at  TEXT NOT NULL
 );
-
