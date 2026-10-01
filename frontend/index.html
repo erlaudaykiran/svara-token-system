@@ -228,8 +228,8 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
       <button class="s" id="viewBtn">View Records</button>
       <button class="s hidden" id="adminVoidBtn" style="color:var(--red);border-color:var(--red)">🚫 Void Token</button>
       <button class="s hidden" id="adminEditBtn" style="color:var(--maroon);border-color:var(--maroon)">✏️ Edit Token</button>
-      <button class="s hidden" id="importBtn" style="color:var(--green);border-color:var(--green)">Restore from Excel</button>
-      <input type="file" id="importFileInput" accept=".xlsx" style="display:none">
+      <button class="s hidden" id="importBtn" style="color:var(--green);border-color:var(--green)">📥 Restore Backup (.xlsx / .db)</button>
+      <input type="file" id="importFileInput" accept=".xlsx,.db,.sqlite,.sqlite3" style="display:none">
     </div>
 
     <div id="storageNotice" style="font-family:Arial,sans-serif;font-size:12px;color:#6b5a4a;margin-top:10px"></div>
@@ -894,7 +894,7 @@ document.getElementById('importFileInput').onchange = function(){
   })
   .then(function(){
     btn.disabled = false;
-    btn.textContent = 'Restore from Excel';
+    btn.textContent = '📥 Restore Backup (.xlsx / .db)';
     document.getElementById('importFileInput').value = '';
   });
 };

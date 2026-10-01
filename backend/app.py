@@ -245,6 +245,34 @@ def init_db():
                         logged_in_at  TEXT NOT NULL
                     )
                 """)
+
+        # Counter synchronization & Floor protection:
+        # Guarantee counters.last_no is NEVER lower than any existing token serial number
+        # and NEVER lower than any configured environment minimum floor (MIN_RE_NO, MIN_SI_NO, MIN_SA_NO)
+        floors = {
+            "RE": int(os.environ.get("MIN_RE_NO", os.environ.get("START_RE_NO", 0))),
+            "SI": int(os.environ.get("MIN_SI_NO", os.environ.get("START_SI_NO", 0))),
+            "SA": int(os.environ.get("MIN_SA_NO", os.environ.get("START_SA_NO", 0)))
+        }
+
+        counters_rows = db.execute("SELECT type_key, prefix, last_no FROM counters").fetchall()
+        for c in counters_rows:
+            tk = c["type_key"]
+            pfx = c["prefix"]
+            curr_last = c["last_no"]
+            target_last = max(curr_last, floors.get(tk, 0))
+
+            tok_rows = db.execute("SELECT serial FROM tokens WHERE type_key = ?", (tk,)).fetchall()
+            for tr in tok_rows:
+                s = tr["serial"]
+                if s and s.startswith(pfx):
+                    digits = s[len(pfx):]
+                    if digits.isdigit():
+                        target_last = max(target_last, int(digits))
+
+            if target_last > curr_last:
+                db.execute("UPDATE counters SET last_no = ? WHERE type_key = ?", (target_last, tk))
+        db.commit()
     finally:
         db.close()
 
@@ -872,112 +900,174 @@ def system_status():
 
 @app.post("/api/import")
 @require_auth
-def import_excel(user):
+def import_backup(user):
     if user["role"] != "admin":
-        return jsonify(error="Only Administrator can restore from Excel."), 403
+        return jsonify(error="Only Administrator can restore data."), 403
 
     file = request.files.get("file")
-    if not file or not (file.filename.endswith(".xlsx") or file.filename.endswith(".XLSX")):
-        return jsonify(error="Please upload a valid .xlsx Excel file."), 400
+    if not file or not file.filename:
+        return jsonify(error="No file uploaded."), 400
 
-    try:
-        wb = openpyxl.load_workbook(file)
-        ws = wb.active
-    except Exception as e:
-        return jsonify(error=f"Cannot read Excel file: {str(e)}"), 400
-
-    rows = list(ws.iter_rows(values_only=True))
-    if len(rows) < 2:
-        return jsonify(error="The uploaded Excel file has no token data rows."), 400
+    fn = file.filename.lower()
+    if not (fn.endswith(".xlsx") or fn.endswith(".db") or fn.endswith(".sqlite") or fn.endswith(".sqlite3")):
+        return jsonify(error="Please upload a valid .xlsx Excel file or .db SQLite backup file."), 400
 
     db = connect()
-    imported = 0
-    max_nums = {"RE": 0, "SI": 0, "SA": 0}
-    labels = {"RE": "Royal Enfield", "SI": "Silver", "SA": "Saree"}
-
     try:
-        for row in rows[1:]:
-            if not row or not row[0]:
-                continue
-            serial = str(row[0]).strip().upper()
-            if not (serial.startswith("B") or serial.startswith("S") or serial.startswith("SA")):
-                continue
+        imported = 0
+        max_nums = {"RE": 0, "SI": 0, "SA": 0}
+        labels = {"RE": "Royal Enfield", "SI": "Silver", "SA": "Saree"}
 
-            token_type = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-            status = "ACTIVE"
-            
-            # Format detection: 11 columns with Status vs 10 columns vs legacy 7 columns
-            if len(row) >= 11:
-                try:
-                    price = int(row[2]) if row[2] else 0
-                except (ValueError, TypeError):
+        if fn.endswith(".xlsx"):
+            try:
+                wb = openpyxl.load_workbook(file)
+                ws = wb.active
+            except Exception as e:
+                return jsonify(error=f"Cannot read Excel file: {str(e)}"), 400
+
+            rows = list(ws.iter_rows(values_only=True))
+            if len(rows) < 2:
+                return jsonify(error="The uploaded Excel file has no token data rows."), 400
+
+            for row in rows[1:]:
+                if not row or not row[0]:
+                    continue
+                serial = str(row[0]).strip().upper()
+                if not (serial.startswith("B") or serial.startswith("S") or serial.startswith("SA")):
+                    continue
+
+                token_type = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                status = "ACTIVE"
+                if len(row) >= 11:
+                    try:
+                        price = int(row[2]) if row[2] else 0
+                    except (ValueError, TypeError):
+                        price = 0
+                    status = str(row[3]).strip().upper() if len(row) > 3 and row[3] else "ACTIVE"
+                    if status != "VOID":
+                        status = "ACTIVE"
+                    name = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+                    mobile = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+                    payment = str(row[6]).strip() if len(row) > 6 and row[6] else "Cash"
+                    c_date = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+                    c_time = str(row[8]).strip() if len(row) > 8 and row[8] else ""
+                    c_user = str(row[9]).strip() if len(row) > 9 and row[9] else "admin"
+                    c_name = str(row[10]).strip() if len(row) > 10 and row[10] else "Counter"
+                elif len(row) == 10:
+                    try:
+                        price = int(row[2]) if row[2] else 0
+                    except (ValueError, TypeError):
+                        price = 0
+                    name = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+                    mobile = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+                    payment = str(row[5]).strip() if len(row) > 5 and row[5] else "Cash"
+                    c_date = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+                    c_time = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+                    c_user = str(row[8]).strip() if len(row) > 8 and row[8] else "admin"
+                    c_name = str(row[9]).strip() if len(row) > 9 and row[9] else "Counter"
+                else:
+                    name = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+                    mobile = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+                    payment = str(row[4]).strip() if len(row) > 4 and row[4] else "Cash"
+                    c_date = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+                    c_time = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+                    c_user = "admin"
+                    c_name = "Main Counter"
                     price = 0
-                status = str(row[3]).strip().upper() if len(row) > 3 and row[3] else "ACTIVE"
-                if status != "VOID":
-                    status = "ACTIVE"
-                name = str(row[4]).strip() if len(row) > 4 and row[4] else ""
-                mobile = str(row[5]).strip() if len(row) > 5 and row[5] else ""
-                payment = str(row[6]).strip() if len(row) > 6 and row[6] else "Cash"
-                c_date = str(row[7]).strip() if len(row) > 7 and row[7] else ""
-                c_time = str(row[8]).strip() if len(row) > 8 and row[8] else ""
-                c_user = str(row[9]).strip() if len(row) > 9 and row[9] else "admin"
-                c_name = str(row[10]).strip() if len(row) > 10 and row[10] else "Counter"
-            elif len(row) == 10:
-                try:
-                    price = int(row[2]) if row[2] else 0
-                except (ValueError, TypeError):
-                    price = 0
-                name = str(row[3]).strip() if len(row) > 3 and row[3] else ""
-                mobile = str(row[4]).strip() if len(row) > 4 and row[4] else ""
-                payment = str(row[5]).strip() if len(row) > 5 and row[5] else "Cash"
-                c_date = str(row[6]).strip() if len(row) > 6 and row[6] else ""
-                c_time = str(row[7]).strip() if len(row) > 7 and row[7] else ""
-                c_user = str(row[8]).strip() if len(row) > 8 and row[8] else "admin"
-                c_name = str(row[9]).strip() if len(row) > 9 and row[9] else "Counter"
-            else:
-                name = str(row[2]).strip() if len(row) > 2 and row[2] else ""
-                mobile = str(row[3]).strip() if len(row) > 3 and row[3] else ""
-                payment = str(row[4]).strip() if len(row) > 4 and row[4] else "Cash"
-                c_date = str(row[5]).strip() if len(row) > 5 and row[5] else ""
-                c_time = str(row[6]).strip() if len(row) > 6 and row[6] else ""
-                c_user = "admin"
-                c_name = "Main Counter"
-                price = 0
 
-            if serial.startswith("SA"):
-                type_key = "SA"
-            elif serial.startswith("S"):
-                type_key = "SI"
-            elif serial.startswith("B"):
-                type_key = "RE"
-            else:
-                continue
+                if serial.startswith("SA"):
+                    type_key = "SA"
+                elif serial.startswith("S"):
+                    type_key = "SI"
+                elif serial.startswith("B"):
+                    type_key = "RE"
+                else:
+                    continue
 
-            if not price:
-                price = PRICES.get(type_key, 0)
+                if not price:
+                    price = PRICES.get(type_key, 0)
 
-            m = re.search(r"\d+", serial)
-            if m:
-                n = int(m.group(0))
-                if n > max_nums[type_key]:
-                    max_nums[type_key] = n
+                m = re.search(r"\d+", serial)
+                if m:
+                    n = int(m.group(0))
+                    if n > max_nums[type_key]:
+                        max_nums[type_key] = n
 
-            if not token_type:
-                token_type = labels.get(type_key, "Token")
+                if not token_type:
+                    token_type = labels.get(type_key, "Token")
 
-            now_iso = datetime.now().isoformat()
-            if db.is_pg:
-                db.execute("""
-                    INSERT INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (serial) DO NOTHING
-                """, (serial, type_key, token_type, price, status, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
-            else:
-                db.execute("""
-                    INSERT OR IGNORE INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (serial, type_key, token_type, price, status, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
-            imported += 1
+                now_iso = datetime.now().isoformat()
+                if db.is_pg:
+                    db.execute("""
+                        INSERT INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (serial) DO NOTHING
+                    """, (serial, type_key, token_type, price, status, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
+                else:
+                    db.execute("""
+                        INSERT OR IGNORE INTO tokens (serial, type_key, token_type, price, status, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (serial, type_key, token_type, price, status, name, mobile, payment, c_user, c_name, c_date, c_time, now_iso))
+                imported += 1
+
+        else:
+            # Handle uploaded SQLite .db file
+            temp_db_path = os.path.join(EXPORT_DIR, f"temp_upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+            file.save(temp_db_path)
+            try:
+                up_conn = sqlite3.connect(temp_db_path)
+                up_conn.row_factory = sqlite3.Row
+
+                up_cur = up_conn.execute("SELECT * FROM tokens")
+                for tr in up_cur.fetchall():
+                    s = tr["serial"]
+                    tk = tr["type_key"]
+                    tt = tr["token_type"]
+                    pr = row_val(tr, "price", 0)
+                    st = row_val(tr, "status", "ACTIVE")
+                    va = row_val(tr, "voided_at")
+                    vb = row_val(tr, "voided_by")
+                    nm = tr["name"]
+                    mb = tr["mobile"]
+                    pm = tr["payment"]
+                    cb = row_val(tr, "created_by", "admin")
+                    cn = row_val(tr, "counter_name", "Counter")
+                    cd = tr["created_date"]
+                    ct = tr["created_time"]
+                    ca = tr["created_at"]
+
+                    m = re.search(r"\d+", s)
+                    if m and tk in max_nums:
+                        n = int(m.group(0))
+                        if n > max_nums[tk]:
+                            max_nums[tk] = n
+
+                    if db.is_pg:
+                        db.execute("""
+                            INSERT INTO tokens (serial, type_key, token_type, price, status, voided_at, voided_by, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (serial) DO NOTHING
+                        """, (s, tk, tt, pr, st, va, vb, nm, mb, pm, cb, cn, cd, ct, ca))
+                    else:
+                        db.execute("""
+                            INSERT OR IGNORE INTO tokens (serial, type_key, token_type, price, status, voided_at, voided_by, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (s, tk, tt, pr, st, va, vb, nm, mb, pm, cb, cn, cd, ct, ca))
+                    imported += 1
+
+                up_cnt = up_conn.execute("SELECT type_key, last_no FROM counters").fetchall()
+                for cr in up_cnt:
+                    tk = cr["type_key"]
+                    ln = cr["last_no"]
+                    if tk in max_nums and ln > max_nums[tk]:
+                        max_nums[tk] = ln
+                up_conn.close()
+            finally:
+                if os.path.exists(temp_db_path):
+                    try:
+                        os.remove(temp_db_path)
+                    except OSError:
+                        pass
 
         for tk, max_n in max_nums.items():
             if max_n > 0:
@@ -985,13 +1075,12 @@ def import_excel(user):
 
         db.commit()
         refresh_excel_file(db)
-    except Exception:
+        return jsonify(success=True, imported=imported, message=f"Successfully restored {imported} records! Counters updated to highest sequence numbers.")
+    except Exception as e:
         db.rollback()
-        raise
+        return jsonify(error=f"Restore failed: {str(e)}"), 500
     finally:
         db.close()
-
-    return jsonify(success=True, imported=imported, message=f"Successfully restored {imported} tokens from Excel! Counters updated.")
 
 
 @app.get("/api/export")
