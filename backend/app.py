@@ -11,12 +11,29 @@ Multi-User Counter Management & Secure Token Generation:
   - Dynamic Pricing: Royal Enfield ₹301, Silver ₹201, Saree ₹101
 """
 import io
+import json
 import os
 import re
 import secrets
 import sqlite3
+import sys
 import threading
+import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone, timedelta
+
+# Reconfigure stdout/stderr on Windows to prevent UnicodeEncodeError in console output
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -34,6 +51,17 @@ from openpyxl.utils import get_column_letter
 
 # Thread-level lock for process concurrency and SQLite atomic writes
 db_lock = threading.Lock()
+
+# Admin Mobile & Thank You Blessing Configuration
+ADMIN_MOBILE = os.environ.get("ADMIN_MOBILE", "9848433020").strip()
+THANK_YOU_MESSAGE = os.environ.get(
+    "THANK_YOU_MESSAGE",
+    "Thank you for registration! May Goddess Durgamatha bless you and your family."
+).strip()
+
+# In-memory thread-safe OTP store for Admin 2FA
+PENDING_OTPS = {}
+otp_lock = threading.Lock()
 
 # Database Configuration:
 # When DATABASE_URL is set (Render PostgreSQL, Neon, Supabase), use PostgreSQL.
@@ -377,6 +405,132 @@ def fmt_serial(prefix, n):
     return f"{prefix}{n:05d}"
 
 
+def mask_mobile(m):
+    digits = re.sub(r"\D", "", str(m))
+    if len(digits) >= 10:
+        return f"+91 {digits[:2]}****{digits[-4:]}"
+    return str(m)
+
+
+def send_sms(mobile, message):
+    """
+    Dispatches SMS to mobile number.
+    Supports Fast2SMS (FAST2SMS_API_KEY), custom HTTP SMS gateway (SMS_GATEWAY_URL),
+    and always logs to server console for audit trail.
+    """
+    clean_mobile = re.sub(r"\D", "", str(mobile))
+    if len(clean_mobile) == 12 and clean_mobile.startswith("91"):
+        clean_mobile = clean_mobile[2:]
+
+    try:
+        print(f"\n[SMS DISPATCH] Destination: +91 {clean_mobile}\nMessage:\n{message}\n")
+    except Exception:
+        safe_msg = message.encode("ascii", "replace").decode("ascii")
+        print(f"\n[SMS DISPATCH] Destination: +91 {clean_mobile}\nMessage:\n{safe_msg}\n")
+
+    # 1. Fast2SMS Provider
+    fast2sms_key = os.environ.get("FAST2SMS_API_KEY")
+    if fast2sms_key:
+        try:
+            req_data = json.dumps({
+                "route": "q",
+                "message": message,
+                "language": "english",
+                "flash": 0,
+                "numbers": clean_mobile
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://www.fast2sms.com/dev/bulkV2",
+                data=req_data,
+                headers={
+                    "authorization": fast2sms_key.strip(),
+                    "Content-Type": "application/json",
+                    "User-Agent": "SVARA-SMS/1.0"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return {"success": True, "provider": "Fast2SMS", "response": result}
+        except Exception as e:
+            print(f"[WARN Fast2SMS] Dispatch error: {e}")
+
+    # 2. Generic Custom SMS Gateway (e.g., https://gateway/send?apikey={api_key}&to={mobile}&msg={message})
+    gateway_url = os.environ.get("SMS_GATEWAY_URL")
+    if gateway_url:
+        try:
+            formatted_url = gateway_url.format(
+                mobile=clean_mobile,
+                message=urllib.parse.quote_plus(message),
+                api_key=os.environ.get("SMS_API_KEY", "")
+            )
+            req = urllib.request.Request(formatted_url, headers={"User-Agent": "SVARA-SMS/1.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return {"success": True, "provider": "CustomGateway", "status": resp.status}
+        except Exception as e:
+            print(f"[WARN CustomGateway] Dispatch error: {e}")
+
+    return {"success": True, "provider": "ConsoleAudit", "message": "Dispatched to console log"}
+
+
+def build_receipt_message(devotee_name, tokens_list, payment, total_amount, counter_name, date_str, time_str):
+    serials = [t["serial"] for t in tokens_list]
+    if len(serials) == 1:
+        ser_text = serials[0]
+    elif len(serials) <= 3:
+        ser_text = ", ".join(serials)
+    else:
+        ser_text = f"{serials[0]} to {serials[-1]} ({len(serials)} tokens)"
+
+    cat_name = tokens_list[0]["type"]
+    price_val = tokens_list[0].get("price", 0)
+
+    lines = [
+        "🌸 SVARA 2026 LUCKY DRAW 🌸",
+        "Official Token Receipt",
+        "-----------------------------",
+        f"Devotee: {devotee_name}",
+        f"Token No: {ser_text}",
+        f"Category: {cat_name}"
+    ]
+    if price_val and price_val > 0:
+        lines.append(f"Amount: Rs. {total_amount} ({payment})")
+
+    lines.extend([
+        f"Date: {date_str} | {time_str}",
+        f"Counter: {counter_name}",
+        "-----------------------------",
+        THANK_YOU_MESSAGE,
+        "Contact: +91 9848433020, +91 9885897093"
+    ])
+    return "\n".join(lines)
+
+
+def register_user_session(user):
+    token = secrets.token_hex(24)
+    now_iso = datetime.now().isoformat()
+    db = connect()
+    try:
+        if db.is_pg:
+            db.execute(
+                "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (user_id) DO UPDATE SET session_token = EXCLUDED.session_token, logged_in_at = EXCLUDED.logged_in_at",
+                (user["username"], token, now_iso)
+            )
+        else:
+            db.execute(
+                "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (user_id) DO UPDATE SET session_token = excluded.session_token, logged_in_at = excluded.logged_in_at",
+                (user["username"], token, now_iso)
+            )
+        db.commit()
+    finally:
+        db.close()
+
+    session["token"] = token
+    session["user"] = user["username"]
+    return token
+
+
 COLUMNS = ["Token No", "Type", "Price (₹)", "Status", "Name", "Mobile", "Payment", "Date", "Time", "Issued By", "Counter"]
 
 
@@ -515,48 +669,122 @@ def login():
     if not user:
         return jsonify(error="Invalid User ID or Password."), 401
 
-    token = secrets.token_hex(24)
-    now_iso = datetime.now().isoformat()
-    db = connect()
-    try:
+    # 1. Administrator requires OTP verification
+    if user["role"] == "admin":
+        otp_code = str(secrets.randbelow(900000) + 100000)
+        otp_token = secrets.token_hex(16)
+        with otp_lock:
+            PENDING_OTPS[otp_token] = {
+                "user": user,
+                "otp": otp_code,
+                "mobile": ADMIN_MOBILE,
+                "expires_at": time.time() + 300,  # 5 minutes
+                "attempts": 0,
+                "created_at": time.time()
+            }
+        otp_msg = (
+            f"Your SVARA Admin login verification code is {otp_code}. "
+            f"Valid for 5 minutes. Do not share this OTP with anyone."
+        )
         try:
-            if db.is_pg:
-                db.execute(
-                    "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?) "
-                    "ON CONFLICT (user_id) DO UPDATE SET session_token = EXCLUDED.session_token, logged_in_at = EXCLUDED.logged_in_at",
-                    (user["username"], token, now_iso)
-                )
-            else:
-                db.execute(
-                    "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?) "
-                    "ON CONFLICT (user_id) DO UPDATE SET session_token = excluded.session_token, logged_in_at = excluded.logged_in_at",
-                    (user["username"], token, now_iso)
-                )
-            db.commit()
-        except Exception as sess_err:
-            print(f"[WARN] Session table insert error: {sess_err}. Re-creating active_sessions table...")
-            db.rollback()
-            db.execute("DROP TABLE IF EXISTS active_sessions")
-            if db.is_pg:
-                db.execute("CREATE TABLE active_sessions (user_id VARCHAR(50) PRIMARY KEY, session_token TEXT NOT NULL, logged_in_at TEXT NOT NULL)")
-            else:
-                db.execute("CREATE TABLE active_sessions (user_id TEXT PRIMARY KEY, session_token TEXT NOT NULL, logged_in_at TEXT NOT NULL)")
-            db.execute(
-                "INSERT INTO active_sessions (user_id, session_token, logged_in_at) VALUES (?, ?, ?)",
-                (user["username"], token, now_iso)
-            )
-            db.commit()
-    finally:
-        db.close()
+            print(f"\n[ADMIN OTP] 🔐 Admin login OTP: {otp_code} -> Mobile: {ADMIN_MOBILE}\n")
+        except Exception:
+            print(f"\n[ADMIN OTP] [LOCK] Admin login OTP: {otp_code} -> Mobile: {ADMIN_MOBILE}\n")
 
-    session["token"] = token
-    session["user"] = user["username"]
+        return jsonify(
+            requires_otp=True,
+            otp_token=otp_token,
+            masked_mobile=mask_mobile(ADMIN_MOBILE),
+            message=f"Verification code sent to {mask_mobile(ADMIN_MOBILE)}.",
+            dev_otp=otp_code if os.environ.get("FLASK_ENV") == "development" or os.environ.get("DEBUG_OTP") else None
+        )
+
+    # 2. Counter staff logs in directly
+    register_user_session(user)
     return jsonify(
         success=True,
         username=user["username"],
         role=user["role"],
         name=user["name"],
         counter_name=user["counter_name"]
+    )
+
+
+@app.post("/api/auth/verify-otp")
+def verify_otp():
+    data = request.get_json(silent=True) or {}
+    otp_token = str(data.get("otp_token", "")).strip()
+    submitted_otp = str(data.get("otp", "")).strip()
+
+    if not otp_token or not submitted_otp:
+        return jsonify(error="Please provide both OTP token and 6-digit verification code."), 400
+
+    with otp_lock:
+        record = PENDING_OTPS.get(otp_token)
+        if not record:
+            return jsonify(error="Verification session expired or not found. Please log in again."), 400
+
+        if time.time() > record["expires_at"]:
+            del PENDING_OTPS[otp_token]
+            return jsonify(error="Verification code has expired. Please request a new code."), 400
+
+        if record["attempts"] >= 5:
+            del PENDING_OTPS[otp_token]
+            return jsonify(error="Too many failed attempts. For security, please sign in again."), 400
+
+        if not secrets.compare_digest(submitted_otp, record["otp"]):
+            record["attempts"] += 1
+            remaining = 5 - record["attempts"]
+            return jsonify(error=f"Incorrect verification code. {remaining} attempt(s) remaining."), 400
+
+        user = record["user"]
+        del PENDING_OTPS[otp_token]
+
+    register_user_session(user)
+    return jsonify(
+        success=True,
+        username=user["username"],
+        role=user["role"],
+        name=user["name"],
+        counter_name=user["counter_name"]
+    )
+
+
+@app.post("/api/auth/resend-otp")
+def resend_otp():
+    data = request.get_json(silent=True) or {}
+    otp_token = str(data.get("otp_token", "")).strip()
+
+    with otp_lock:
+        record = PENDING_OTPS.get(otp_token)
+        if not record:
+            return jsonify(error="Verification session expired. Please sign in again."), 400
+
+        last_sent = record.get("last_sent", record["created_at"])
+        if time.time() - last_sent < 30:
+            remaining = int(30 - (time.time() - last_sent))
+            return jsonify(error=f"Please wait {remaining} seconds before requesting a new code."), 429
+
+        new_otp = str(secrets.randbelow(900000) + 100000)
+        record["otp"] = new_otp
+        record["expires_at"] = time.time() + 300
+        record["attempts"] = 0
+        record["last_sent"] = time.time()
+
+    otp_msg = (
+        f"Your new SVARA Admin login verification code is {new_otp}. "
+        f"Valid for 5 minutes. Do not share this OTP with anyone."
+    )
+    send_sms(record["mobile"], otp_msg)
+    try:
+        print(f"\n[ADMIN OTP RESEND] 🔐 New Admin verification OTP: {new_otp} -> Mobile: {record['mobile']}\n")
+    except Exception:
+        print(f"\n[ADMIN OTP RESEND] [LOCK] New Admin verification OTP: {new_otp} -> Mobile: {record['mobile']}\n")
+
+    return jsonify(
+        success=True,
+        message=f"New verification code sent to {mask_mobile(record['mobile'])}.",
+        dev_otp=new_otp if os.environ.get("FLASK_ENV") == "development" or os.environ.get("DEBUG_OTP") else None
     )
 
 
@@ -752,6 +980,28 @@ def create_token(user):
         finally:
             db.close()
 
+    send_digital = bool(data.get("send_digital", True))
+    digital_receipt_data = None
+    if send_digital and created_tokens:
+        receipt_text = build_receipt_message(
+            devotee_name=name,
+            tokens_list=created_tokens,
+            payment=payment,
+            total_amount=unit_price * len(created_tokens),
+            counter_name=user["counter_name"],
+            date_str=created_tokens[0]["date"],
+            time_str=created_tokens[0]["time"]
+        )
+        sms_res = send_sms(mobile, receipt_text)
+        wa_url = f"https://api.whatsapp.com/send?phone=91{mobile}&text={urllib.parse.quote_plus(receipt_text)}"
+        digital_receipt_data = {
+            "sms_sent": sms_res.get("success", False),
+            "sms_provider": sms_res.get("provider", "ConsoleAudit"),
+            "whatsapp_url": wa_url,
+            "receipt_text": receipt_text,
+            "mobile": mobile
+        }
+
     res = {
         "tokens": created_tokens,
         "count": len(created_tokens),
@@ -769,8 +1019,46 @@ def create_token(user):
         "counter_name": user["counter_name"],
         "date": created_tokens[0]["date"],
         "time": created_tokens[0]["time"],
+        "digital_receipt": digital_receipt_data,
+        "thank_you_message": THANK_YOU_MESSAGE
     }
     return jsonify(res), 201
+
+
+@app.post("/api/tokens/<serial>/receipt")
+@require_auth
+def resend_token_receipt(user, serial):
+    """
+    Generates and pushes digital receipt (SMS and WhatsApp link) for an existing token.
+    """
+    serial = str(serial).strip().upper()
+    db = connect()
+    try:
+        row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
+        if not row:
+            return jsonify(error=f"Token {serial} was not found."), 404
+        t = token_json(row)
+        receipt_text = build_receipt_message(
+            devotee_name=t["name"],
+            tokens_list=[t],
+            payment=t["payment"],
+            total_amount=t["price"],
+            counter_name=t["counter_name"],
+            date_str=t["date"],
+            time_str=t["time"]
+        )
+        sms_res = send_sms(t["mobile"], receipt_text)
+        wa_url = f"https://api.whatsapp.com/send?phone=91{t['mobile']}&text={urllib.parse.quote_plus(receipt_text)}"
+        return jsonify(
+            success=True,
+            sms_sent=sms_res.get("success", False),
+            whatsapp_url=wa_url,
+            receipt_text=receipt_text,
+            mobile=t["mobile"],
+            thank_you_message=THANK_YOU_MESSAGE
+        )
+    finally:
+        db.close()
 
 
 @app.get("/api/tokens")

@@ -98,12 +98,13 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 .token .no{font-size:38px;font-weight:700;margin:5px 0;letter-spacing:.04em}
 .token .d{font-size:13px;text-align:left;margin-top:4px;line-height:1.4}
 .token .cp{font-size:12px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px}
+.token .blessing{font-size:11px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px;line-height:1.35;text-align:center;font-style:italic}
 .cut-spacer{height:10mm}
 
 @media print{
  @page{size:80mm auto;margin:2mm 0}
  body{background:#fff;margin:0;padding:0}
- header,main,#loginSection,#editModal,.toast{display:none!important}
+ header,main,#loginSection,#editModal,#receiptModal,.toast{display:none!important}
  #printArea{display:block}
  .token{
    width:72mm!important;
@@ -128,7 +129,8 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 </header>
 
 <section id="loginSection" class="hidden">
-  <div class="panel login-panel">
+  <!-- Step 1: User ID & Password -->
+  <div class="panel login-panel" id="loginCredsPanel">
     <div class="tag" style="background:var(--maroon);margin-bottom:10px;">Staff &amp; Admin Sign In</div>
     <h2 style="margin-top:0">Sign In</h2>
     <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
@@ -141,6 +143,26 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="err" id="loginErr"></div>
     <div class="row" style="margin-top:16px">
       <button class="p" id="loginBtn">Sign In</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Admin OTP Verification Input Screen -->
+  <div class="panel login-panel hidden" id="loginOtpPanel">
+    <div class="tag" style="background:var(--green);color:#fff;margin-bottom:10px;">🔐 2-Factor Authentication</div>
+    <h2 style="margin-top:0">Admin OTP Verification</h2>
+    <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
+      An OTP verification code was sent via SMS to your registered mobile: <b id="otpPhoneDisplay" style="color:var(--maroon)"></b>.
+    </p>
+    <label for="otpCode">Enter 6-Digit Code</label>
+    <input id="otpCode" type="tel" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="• • • • • •" style="text-align:center;font-size:26px;letter-spacing:8px;font-weight:700">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-family:Arial,sans-serif;font-size:12px;color:#6b5a4a">
+      <span>⏱️ Expires in: <b id="otpCountdown" style="color:var(--maroon)">05:00</b></span>
+      <button type="button" class="s" id="resendOtpBtn" style="padding:4px 10px;font-size:12px">Resend Code</button>
+    </div>
+    <div class="err" id="otpErr"></div>
+    <div class="row" style="margin-top:16px">
+      <button type="button" class="p" id="verifyOtpBtn">Verify &amp; Sign In</button>
+      <button type="button" class="s" id="otpBackBtn">← Back</button>
     </div>
   </div>
 </section>
@@ -195,6 +217,16 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
         <div class="pay">
           <label><input type="radio" name="pay" value="Cash"><span>Cash</span></label>
           <label><input type="radio" name="pay" value="UPI"><span>UPI</span></label>
+        </div>
+
+        <div style="margin-top:14px;background:#fcf8ee;border:1.5px solid var(--line);border-radius:6px;padding:11px 13px">
+          <label style="display:flex;align-items:center;gap:10px;margin:0;cursor:pointer;font-weight:700;color:var(--maroon)">
+            <input type="checkbox" id="sendDigitalReceipt" checked style="width:19px;height:19px;accent-color:var(--maroon);cursor:pointer">
+            <span>📱 Send Digital Receipt via WhatsApp &amp; SMS</span>
+          </label>
+          <div style="font-family:Arial,sans-serif;font-size:12px;color:#6b5a4a;margin-top:4px;margin-left:29px;line-height:1.4">
+            Dispatches SMS directly to customer and generates instant WhatsApp receipt link with thank you blessing.
+          </div>
         </div>
       </div>
 
@@ -265,6 +297,36 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
   </div>
 </div>
 
+<!-- Digital Receipt Modal (WhatsApp & SMS) -->
+<div id="receiptModal" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:480px">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:18px;color:var(--maroon)">📱 Customer Digital Receipt</h3>
+      <button type="button" class="modal-close" id="receiptModalClose">&times;</button>
+    </div>
+    <div style="margin:14px 0 10px;text-align:left">
+      <div id="receiptSmsBadge" style="display:inline-block;padding:4px 10px;border-radius:12px;background:#e8f5e9;color:#1b5e20;font-family:Arial,sans-serif;font-size:12px;font-weight:700;margin-bottom:8px">
+        ✅ SMS Dispatched to Devotee
+      </div>
+      <div style="font-family:Arial,sans-serif;font-size:14px;color:var(--ink);line-height:1.4">
+        Issued to <b id="receiptDevoteeName"></b> (<span id="receiptDevoteeMobile"></span>):
+      </div>
+      <div id="receiptSerialDisplay" style="margin:6px 0 10px;font-size:22px;font-weight:700;color:var(--maroon);letter-spacing:1px"></div>
+    </div>
+
+    <!-- Receipt preview -->
+    <pre id="receiptPreviewBox" style="text-align:left;background:#fcf8ee;border:1px solid var(--line);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;white-space:pre-wrap;max-height:160px;overflow-y:auto;color:#2a1216;margin:8px 0;line-height:1.4"></pre>
+
+    <div class="row" style="margin-top:14px">
+      <a id="receiptWaBtn" target="_blank" class="p" style="background:#25D366;border-color:#25D366;color:#fff;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:15px;font-weight:700;flex:1">
+        <span>💬 Send WhatsApp Receipt</span>
+      </a>
+      <button type="button" class="s" id="receiptCopyBtn">📋 Copy</button>
+      <button type="button" class="s" id="receiptDoneBtn">Done</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 <div id="printArea"></div>
 
@@ -317,12 +379,48 @@ function tick(){
 setInterval(tick, 1000);
 tick();
 
+var activeOtpToken = null;
+var otpCountdownTimer = null;
+var otpSecondsRemaining = 0;
+
+function stopOtpCountdown(){
+  if(otpCountdownTimer){
+    clearInterval(otpCountdownTimer);
+    otpCountdownTimer = null;
+  }
+}
+
+function startOtpCountdown(seconds){
+  stopOtpCountdown();
+  otpSecondsRemaining = seconds;
+  function updateDisplay(){
+    var m = Math.floor(otpSecondsRemaining / 60);
+    var s = otpSecondsRemaining % 60;
+    var el = document.getElementById('otpCountdown');
+    if(el) el.textContent = two(m) + ':' + two(s);
+    if(otpSecondsRemaining <= 0){
+      stopOtpCountdown();
+      if(el) el.textContent = 'Expired';
+    } else {
+      otpSecondsRemaining--;
+    }
+  }
+  updateDisplay();
+  otpCountdownTimer = setInterval(updateDisplay, 1000);
+}
+
 function showLogin(msg){
+  stopOtpCountdown();
+  activeOtpToken = null;
   document.getElementById('loginSection').classList.remove('hidden');
+  document.getElementById('loginCredsPanel').classList.remove('hidden');
+  document.getElementById('loginOtpPanel').classList.add('hidden');
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authBar').classList.add('hidden');
   document.getElementById('loginPass').value = '';
   document.getElementById('loginErr').textContent = msg || '';
+  document.getElementById('otpCode').value = '';
+  document.getElementById('otpErr').textContent = '';
   setTimeout(function(){ document.getElementById('loginUser').focus(); }, 100);
 }
 
@@ -391,6 +489,17 @@ function doLogin(){
     });
   })
   .then(function(res){
+    if(res.requires_otp){
+      activeOtpToken = res.otp_token;
+      document.getElementById('otpPhoneDisplay').textContent = res.masked_mobile || 'your registered mobile';
+      document.getElementById('loginCredsPanel').classList.add('hidden');
+      document.getElementById('loginOtpPanel').classList.remove('hidden');
+      document.getElementById('otpCode').value = '';
+      document.getElementById('otpErr').textContent = '';
+      startOtpCountdown(300);
+      setTimeout(function(){ document.getElementById('otpCode').focus(); }, 150);
+      return;
+    }
     showApp({ username: res.username, role: res.role, name: res.name, counter_name: res.counter_name });
   })
   .catch(function(e){
@@ -402,9 +511,91 @@ function doLogin(){
   });
 }
 
+function doVerifyOtp(){
+  var code = document.getElementById('otpCode').value.trim();
+  var err = document.getElementById('otpErr');
+  var btn = document.getElementById('verifyOtpBtn');
+  if(!code || code.length !== 6){
+    err.textContent = 'Please enter the 6-digit verification code.';
+    return;
+  }
+  if(!activeOtpToken){
+    err.textContent = 'Session expired. Please click Back and sign in again.';
+    return;
+  }
+  err.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+
+  fetch('/api/auth/verify-otp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ otp_token: activeOtpToken, otp: code })
+  })
+  .then(function(r){
+    return r.json().catch(function(){ return {}; }).then(function(j){
+      if(!r.ok) throw new Error(j.error || 'Verification failed');
+      return j;
+    });
+  })
+  .then(function(res){
+    stopOtpCountdown();
+    activeOtpToken = null;
+    showApp({ username: res.username, role: res.role, name: res.name, counter_name: res.counter_name });
+  })
+  .catch(function(e){
+    err.textContent = e.message;
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = 'Verify & Sign In';
+  });
+}
+
+function doResendOtp(){
+  var err = document.getElementById('otpErr');
+  var btn = document.getElementById('resendOtpBtn');
+  if(!activeOtpToken){
+    err.textContent = 'Session expired. Please click Back and sign in again.';
+    return;
+  }
+  err.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  fetch('/api/auth/resend-otp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ otp_token: activeOtpToken })
+  })
+  .then(function(r){
+    return r.json().catch(function(){ return {}; }).then(function(j){
+      if(!r.ok) throw new Error(j.error || 'Failed to resend code');
+      return j;
+    });
+  })
+  .then(function(res){
+    startOtpCountdown(300);
+    document.getElementById('otpCode').value = '';
+    showToast('✉️ New verification code sent to admin mobile!');
+  })
+  .catch(function(e){
+    err.textContent = e.message;
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = 'Resend Code';
+  });
+}
+
 document.getElementById('loginBtn').onclick = doLogin;
 document.getElementById('loginPass').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
 document.getElementById('loginUser').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
+
+document.getElementById('verifyOtpBtn').onclick = doVerifyOtp;
+document.getElementById('otpCode').onkeydown = function(e){ if(e.key === 'Enter') doVerifyOtp(); };
+document.getElementById('resendOtpBtn').onclick = doResendOtp;
+document.getElementById('otpBackBtn').onclick = function(){ showLogin(); };
 
 document.getElementById('logoutBtn').onclick = function(){
   fetch('/api/auth/logout', { method: 'POST' })
@@ -587,6 +778,7 @@ function tokenHTML(t, copy){
       'Date: ' + t.date + '<br>' +
       'Time: ' + t.time +
     '</div>' +
+    '<div class="blessing">Thank you for registration!<br>May Goddess Durgamatha bless you and your family.</div>' +
     '<div class="cp">' + copy + '</div>' +
     '<div class="cut-spacer"></div>' +
   '</div>';
@@ -616,6 +808,8 @@ document.getElementById('issueBtn').onclick = function(){
   btn.disabled = true;
   btn.textContent = '⏳ Saving & Generating Token...';
 
+  var sendDigital = document.getElementById('sendDigitalReceipt') ? document.getElementById('sendDigitalReceipt').checked : true;
+
   api('/api/tokens', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -624,7 +818,8 @@ document.getElementById('issueBtn').onclick = function(){
       name: name,
       mobile: mobile,
       payment: payEl.value,
-      quantity: qty
+      quantity: qty,
+      send_digital: sendDigital
     })
   })
   .then(function(res){
@@ -643,6 +838,10 @@ document.getElementById('issueBtn').onclick = function(){
 
     toChoose();
     setTimeout(function(){ window.print(); }, 120);
+
+    if(res.digital_receipt){
+      showDigitalReceiptModal(res.digital_receipt, tokensList[0].name, serText);
+    }
   })
   .catch(function(e){
     err.textContent = 'Error: ' + e.message;
@@ -652,6 +851,60 @@ document.getElementById('issueBtn').onclick = function(){
     btn.disabled = false;
     updateQtyPreview();
   });
+};
+
+/* =========================================================
+   DIGITAL RECEIPT MODAL (WHATSAPP & SMS)
+   ========================================================= */
+
+function showDigitalReceiptModal(receipt, devoteeName, serText){
+  document.getElementById('receiptDevoteeName').textContent = devoteeName || 'Devotee';
+  document.getElementById('receiptDevoteeMobile').textContent = receipt.mobile || '';
+  document.getElementById('receiptSerialDisplay').textContent = serText ? ('Token: ' + serText) : '';
+  document.getElementById('receiptPreviewBox').textContent = receipt.receipt_text || '';
+  document.getElementById('receiptWaBtn').href = receipt.whatsapp_url || '#';
+
+  var smsBadge = document.getElementById('receiptSmsBadge');
+  if(receipt.sms_sent){
+    smsBadge.style.background = '#e8f5e9';
+    smsBadge.style.color = '#1b5e20';
+    smsBadge.textContent = '✅ SMS Dispatched to Devotee';
+  } else {
+    smsBadge.style.background = '#fff3e0';
+    smsBadge.style.color = '#e65100';
+    smsBadge.textContent = 'ℹ️ SMS Logged (Provider: ' + (receipt.sms_provider || 'Console') + ')';
+  }
+
+  document.getElementById('receiptModal').classList.remove('hidden');
+}
+
+function resendReceipt(serial){
+  api('/api/tokens/' + encodeURIComponent(serial) + '/receipt', { method: 'POST' })
+    .then(function(res){
+      showDigitalReceiptModal(res, '', serial);
+    })
+    .catch(function(e){
+      alert('Error fetching receipt: ' + e.message);
+    });
+}
+
+document.getElementById('receiptModalClose').onclick = function(){
+  document.getElementById('receiptModal').classList.add('hidden');
+};
+document.getElementById('receiptDoneBtn').onclick = function(){
+  document.getElementById('receiptModal').classList.add('hidden');
+};
+document.getElementById('receiptCopyBtn').onclick = function(){
+  var txt = document.getElementById('receiptPreviewBox').textContent;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){
+      showToast('📋 Receipt copied to clipboard!');
+    }).catch(function(){
+      showToast('📋 Receipt copied');
+    });
+  } else {
+    showToast('📋 Receipt copied');
+  }
 };
 
 /* =========================================================
@@ -686,7 +939,7 @@ function renderTable(){
       (isAdmin ? '<th>Counter</th>' : '') +
       '<th>Date</th>' +
       '<th>Time</th>' +
-      (isAdmin ? '<th>Action</th>' : '') +
+      '<th>Action</th>' +
       '</tr>';
 
     r.forEach(function(x){
@@ -706,19 +959,23 @@ function renderTable(){
         '<td id="cell-pay-' + esc(x.serial) + '">' + esc(x.payment) + '</td>' +
         (isAdmin ? '<td>' + esc(x.counter_name || x.created_by) + '</td>' : '') +
         '<td>' + esc(x.date) + '</td>' +
-        '<td>' + esc(x.time) + '</td>';
+        '<td>' + esc(x.time) + '</td>' +
+        '<td>';
 
-      if(isAdmin){
-        h += '<td>';
-        if(isVoid){
-          h += '<span style="color:#b00020;font-size:12px;font-weight:700">VOIDED</span>';
-        } else {
-          h += '<button class="action-btn edit-btn" onclick="openEditModal(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\',\'' + esc(x.mobile) + '\',\'' + esc(x.payment) + '\')">✏️ Edit</button>' +
-               '<button class="action-btn void-btn" onclick="voidToken(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\')">🚫 Void</button>';
-        }
-        h += '</td>';
+      if(!isVoid){
+        h += '<button class="action-btn" style="background:#25D366;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700" onclick="resendReceipt(\'' + esc(x.serial) + '\')">📱 WhatsApp</button>';
       }
 
+      if(isAdmin){
+        if(isVoid){
+          h += '<span style="color:#b00020;font-size:12px;font-weight:700;margin-left:4px">VOIDED</span>';
+        } else {
+          h += '<button class="action-btn edit-btn" style="margin-left:4px" onclick="openEditModal(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\',\'' + esc(x.mobile) + '\',\'' + esc(x.payment) + '\')">✏️ Edit</button>' +
+               '<button class="action-btn void-btn" style="margin-left:4px" onclick="voidToken(\'' + esc(x.serial) + '\',\'' + esc(x.name) + '\')">🚫 Void</button>';
+        }
+      }
+
+      h += '</td>';
       h += '</tr>';
     });
 
