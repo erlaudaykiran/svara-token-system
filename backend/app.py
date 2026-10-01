@@ -873,6 +873,41 @@ def void_token(user, serial):
     )
 
 
+@app.post("/api/admin/wipe")
+@require_auth
+def wipe_database(user):
+    """
+    Admin-only full database wipe.
+    Permanently deletes all token records and resets serial counters back to 0.
+    """
+    if user["role"] != "admin":
+        return jsonify(error="Permission denied: Only Administrator can wipe database data."), 403
+
+    data = request.get_json(silent=True) or {}
+    confirmation = str(data.get("confirm", "")).strip().upper()
+    if confirmation != "WIPE":
+        return jsonify(error="Confirmation failed: You must type 'WIPE' to confirm this action."), 400
+
+    db = connect()
+    try:
+        # Delete all tokens
+        db.execute("DELETE FROM tokens")
+        # Reset serial counters back to 0
+        db.execute("UPDATE counters SET last_no = 0")
+        db.commit()
+        refresh_excel_file(db)
+    except Exception as e:
+        db.rollback()
+        return jsonify(error=f"Failed to wipe database: {str(e)}"), 500
+    finally:
+        db.close()
+
+    return jsonify(
+        success=True,
+        message="All token records have been wiped and serial numbers have been reset to B00001, S00001, SA00001."
+    )
+
+
 @app.get("/api/system/status")
 def system_status():
     db = connect()

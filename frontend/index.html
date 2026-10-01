@@ -229,6 +229,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
       <button class="s hidden" id="adminVoidBtn" style="color:var(--red);border-color:var(--red)">🚫 Void Token</button>
       <button class="s hidden" id="adminEditBtn" style="color:var(--maroon);border-color:var(--maroon)">✏️ Edit Token</button>
       <button class="s hidden" id="importBtn" style="color:var(--green);border-color:var(--green)">📥 Restore Backup (.xlsx / .db)</button>
+      <button class="s hidden" id="adminWipeBtn" style="color:var(--red);border-color:var(--red);font-weight:700">🗑️ Wipe Database</button>
       <input type="file" id="importFileInput" accept=".xlsx,.db,.sqlite,.sqlite3" style="display:none">
     </div>
 
@@ -339,11 +340,13 @@ function showApp(user){
     document.getElementById('adminVoidBtn').classList.remove('hidden');
     document.getElementById('adminEditBtn').classList.remove('hidden');
     document.getElementById('importBtn').classList.remove('hidden');
+    document.getElementById('adminWipeBtn').classList.remove('hidden');
   } else {
     document.getElementById('adminSummaryWrap').classList.add('hidden');
     document.getElementById('adminVoidBtn').classList.add('hidden');
     document.getElementById('adminEditBtn').classList.add('hidden');
     document.getElementById('importBtn').classList.add('hidden');
+    document.getElementById('adminWipeBtn').classList.add('hidden');
   }
   refresh();
 }
@@ -896,6 +899,42 @@ document.getElementById('importFileInput').onchange = function(){
     btn.disabled = false;
     btn.textContent = '📥 Restore Backup (.xlsx / .db)';
     document.getElementById('importFileInput').value = '';
+  });
+};
+
+document.getElementById('adminWipeBtn').onclick = function(){
+  if(!currentUser || currentUser.role !== 'admin'){
+    alert('Permission denied: Only Administrator can wipe database data.');
+    return;
+  }
+  var step1 = confirm('⚠️ CRITICAL WARNING: You are about to permanently delete ALL token records and reset all serial numbers back to B00001, S00001, SA00001!\n\nThis action CANNOT be undone.\n\nAre you sure you want to wipe the database?');
+  if(!step1) return;
+
+  var step2 = prompt('To confirm permanent deletion, type WIPE in capital letters:');
+  if(!step2 || step2.trim().toUpperCase() !== 'WIPE'){
+    alert('Wipe cancelled. Verification word did not match.');
+    return;
+  }
+
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = '⏳ Wiping Database...';
+
+  api('/api/admin/wipe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm: 'WIPE' })
+  })
+  .then(function(res){
+    alert('✅ ' + (res.message || 'Database wiped successfully!'));
+    refresh();
+  })
+  .catch(function(e){
+    alert('Error wiping database: ' + e.message);
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = '🗑️ Wipe Database';
   });
 };
 
