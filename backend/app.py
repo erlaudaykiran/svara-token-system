@@ -55,8 +55,9 @@ TZ_NAME = os.environ.get("SVARA_TZ", "Asia/Kolkata")
 PRICES = {
     "RE": 301,  # Royal Enfield
     "SI": 201,  # Silver
-    "SA": 101   # Saree
+    "SA": 0     # Saree (No price / free)
 }
+
 
 # User accounts configuration:
 # 1 Admin (handles all counters) + 3 Separate Counter users with independent credentials
@@ -390,16 +391,19 @@ def build_workbook(rows, title="Tokens"):
             price_val = PRICES.get(row_val(r, "type_key"), 0)
         status_val = row_val(r, "status", "ACTIVE")
 
+        price_int = int(price_val)
         if status_val == "ACTIVE":
-            total_amount += int(price_val)
+            total_amount += price_int
             active_count += 1
         else:
             void_count += 1
 
+        price_cell = price_int if price_int > 0 else "-"
+
         row_cells = [
             row_val(r, "serial", ""),
             row_val(r, "token_type", ""),
-            int(price_val),
+            price_cell,
             status_val,
             row_val(r, "name", ""),
             row_val(r, "mobile", ""),
@@ -410,6 +414,7 @@ def build_workbook(rows, title="Tokens"):
             row_val(r, "counter_name", "Counter")
         ]
         ws.append(row_cells)
+
 
         if status_val == "VOID":
             current_row_idx = ws.max_row
@@ -850,9 +855,21 @@ def system_status():
         is_pg = db.is_pg
     finally:
         db.close()
+
+    is_render = bool(os.environ.get("RENDER"))
+    if is_pg:
+        storage_name = "PostgreSQL Database (Permanent across all deploys)"
+        is_persistent = True
+    elif is_render:
+        storage_name = "Render Container (Ephemeral - click 'Backup Database' to save to laptop)"
+        is_persistent = False
+    else:
+        storage_name = "Permanent Local Laptop Storage (database/svara.db)"
+        is_persistent = True
+
     return jsonify({
-        "persistent": is_pg,
-        "storage": "PostgreSQL (Persistent across all deploys)" if is_pg else "Local SQLite (Ephemeral - add DATABASE_URL in Render to persist forever)"
+        "persistent": is_persistent,
+        "storage": storage_name
     })
 
 
@@ -1010,7 +1027,58 @@ def export_excel(user):
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+@app.get("/api/backup/db")
+@require_auth
+def backup_db(user):
+    """
+    Downloads the active database as a SQLite .db file directly to the user's laptop.
+    Ensures data is permanently stored on their computer for future use and safekeeping.
+    """
+    db = connect()
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"svara_database_{timestamp}.db"
+
+        if not db.is_pg:
+            if os.path.exists(DB_PATH):
+                return send_file(DB_PATH, as_attachment=True, download_name=filename, mimetype="application/x-sqlite3")
+
+        # When running on PostgreSQL (Render cloud), create a SQLite backup file to stream to laptop
+        backup_path = os.path.join(EXPORT_DIR, filename)
+        backup_conn = sqlite3.connect(backup_path)
+        with open(os.path.join(ROOT, "database", "schema.sql"), encoding="utf-8") as f:
+            backup_conn.executescript(f.read())
+
+        counters_rows = db.execute("SELECT * FROM counters").fetchall()
+        for c in counters_rows:
+            backup_conn.execute(
+                "INSERT OR REPLACE INTO counters (type_key, label, prefix, last_no) VALUES (?, ?, ?, ?)",
+                (c["type_key"], c["label"], c["prefix"], c["last_no"])
+            )
+
+        tokens_rows = db.execute("SELECT * FROM tokens ORDER BY id ASC").fetchall()
+        for t in tokens_rows:
+            backup_conn.execute("""
+                INSERT OR REPLACE INTO tokens (
+                    id, serial, type_key, token_type, price, status, voided_at, voided_by,
+                    name, mobile, payment, created_by, counter_name, created_date, created_time, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                t["id"], t["serial"], t["type_key"], t["token_type"], row_val(t, "price", 0),
+                row_val(t, "status", "ACTIVE"), row_val(t, "voided_at"), row_val(t, "voided_by"),
+                t["name"], t["mobile"], t["payment"], row_val(t, "created_by", "admin"),
+                row_val(t, "counter_name", "Main Counter"), t["created_date"], t["created_time"], t["created_at"]
+            ))
+        backup_conn.commit()
+        backup_conn.close()
+
+        return send_file(backup_path, as_attachment=True, download_name=filename, mimetype="application/x-sqlite3")
+    finally:
+        db.close()
+
+
 @app.get("/logo.jpg")
+
 def serve_logo():
     return send_from_directory(FRONTEND, "logo.jpg", mimetype="image/jpeg")
 

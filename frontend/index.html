@@ -165,7 +165,6 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 
       <button class="choice" data-k="SA">
         <b>Saree</b>
-        <div class="card-price">₹101 / token</div>
         <span class="choice-serial">Serial starts at SA00001</span>
         <span class="choice-next" id="nx-SA"></span>
       </button>
@@ -225,6 +224,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     
     <div class="row">
       <button class="s" id="xlsBtn">Download Excel</button>
+      <button class="s" id="backupDbBtn" style="color:var(--green);border-color:var(--green);font-weight:700">💾 Backup Database (.db)</button>
       <button class="s" id="viewBtn">View Records</button>
       <button class="s hidden" id="adminVoidBtn" style="color:var(--red);border-color:var(--red)">🚫 Void Token</button>
       <button class="s hidden" id="adminEditBtn" style="color:var(--maroon);border-color:var(--maroon)">✏️ Edit Token</button>
@@ -269,7 +269,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 
 <script>
 var TYPES = { RE: 'Royal Enfield', SI: 'Silver', SA: 'Saree' };
-var PRICES = { RE: 301, SI: 201, SA: 101 };
+var PRICES = { RE: 301, SI: 201, SA: 0 };
 var PREFIXES = { RE: 'B', SI: 'S', SA: 'SA' };
 
 var currentUser = null;
@@ -483,20 +483,30 @@ function updateQtyPreview(){
 
   var prevEl = document.getElementById('qtyPreview');
   var btnEl = document.getElementById('issueBtn');
-  if(q === 1){
-    prevEl.textContent = 'Next Token: ' + startSerial + '  |  Total: ₹' + totalPrice;
-    btnEl.textContent = '🖨️ Print & Issue Token (₹' + totalPrice + ')';
+  if(unitPrice > 0){
+    if(q === 1){
+      prevEl.textContent = 'Next Token: ' + startSerial + '  |  Total: ₹' + totalPrice;
+      btnEl.textContent = '🖨️ Print & Issue Token (₹' + totalPrice + ')';
+    } else {
+      prevEl.textContent = 'Next Tokens: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)  |  Total: ₹' + totalPrice + ' (' + q + ' × ₹' + unitPrice + ')';
+      btnEl.textContent = '🖨️ Print & Issue ' + q + ' Tokens (₹' + totalPrice + ')';
+    }
   } else {
-    prevEl.textContent = 'Next Tokens: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)  |  Total: ₹' + totalPrice + ' (' + q + ' × ₹' + unitPrice + ')';
-    btnEl.textContent = '🖨️ Print & Issue ' + q + ' Tokens (₹' + totalPrice + ')';
+    if(q === 1){
+      prevEl.textContent = 'Next Token: ' + startSerial;
+      btnEl.textContent = '🖨️ Print & Issue Token';
+    } else {
+      prevEl.textContent = 'Next Tokens: ' + startSerial + ' to ' + endSerial + ' (' + q + ' tokens)';
+      btnEl.textContent = '🖨️ Print & Issue ' + q + ' Tokens';
+    }
   }
 }
 
 document.querySelectorAll('.choice').forEach(function(b){
   b.onclick = function(){
     current = b.dataset.k;
-    var price = PRICES[current];
-    document.getElementById('selTag').textContent = TYPES[current] + ' — ₹' + price + ' per token';
+    var price = PRICES[current] || 0;
+    document.getElementById('selTag').textContent = price > 0 ? (TYPES[current] + ' — ₹' + price + ' per token') : TYPES[current];
     document.getElementById('selNext').textContent = counters[current] ? 'Next serial begins at ' + counters[current].next : '';
     document.getElementById('quantity').value = '1';
     updateQtyPreview();
@@ -539,6 +549,9 @@ document.getElementById('qtyPlus').onclick = function(){
 document.getElementById('quantity').oninput = updateQtyPreview;
 
 function tokenHTML(t, copy){
+  var hasPrice = (t.price && Number(t.price) > 0);
+  var priceHeader = hasPrice ? (' &mdash; ₹' + t.price) : '';
+  var priceDetail = hasPrice ? ('<b>Price: ₹' + t.price + '</b><br>') : '';
   return '<div class="token">' +
     '<div class="token-header">' +
       '<img src="/logo.jpg" class="token-logo" alt="Logo">' +
@@ -548,10 +561,10 @@ function tokenHTML(t, copy){
         '<div class="contact">Cell: +91 9848433020, +91 9885897093</div>' +
       '</div>' +
     '</div>' +
-    '<div class="cat">' + esc(t.type) + ' &mdash; ₹' + t.price + '</div>' +
+    '<div class="cat">' + esc(t.type) + priceHeader + '</div>' +
     '<div class="no">' + esc(t.serial) + '</div>' +
     '<div class="d">' +
-      '<b>Price: ₹' + t.price + '</b><br>' +
+      priceDetail +
       'Name: ' + esc(t.name) + '<br>' +
       'Mobile: ' + esc(t.mobile) + '<br>' +
       'Payment: ' + esc(t.payment) + '<br>' +
@@ -610,7 +623,8 @@ document.getElementById('issueBtn').onclick = function(){
     document.getElementById('printArea').innerHTML = printHtml;
 
     var serText = tokensList.length === 1 ? tokensList[0].serial : (tokensList[0].serial + ' to ' + tokensList[tokensList.length - 1].serial);
-    showToast('✅ Saved & Issued: ' + serText + ' (' + esc(tokensList[0].name) + ') &bull; ₹' + res.total_amount);
+    var revToast = (res.total_amount && res.total_amount > 0) ? (' &bull; ₹' + res.total_amount) : '';
+    showToast('✅ Saved & Issued: ' + serText + ' (' + esc(tokensList[0].name) + ')' + revToast);
 
     toChoose();
     setTimeout(function(){ window.print(); }, 120);
@@ -666,10 +680,11 @@ function renderTable(){
       var serialDisplay = isVoid ? '<span class="strike"><b>' + esc(x.serial) + '</b></span>' : '<b>' + esc(x.serial) + '</b>';
       var statusBadge = isVoid ? '<span class="badge-void">VOID</span>' : '<span class="badge-active">ACTIVE</span>';
 
+      var priceBadge = (x.price && Number(x.price) > 0) ? ('<b>₹' + esc(x.price) + '</b>') : '-';
       h += '<tr' + rowClass + '>' +
         '<td>' + serialDisplay + '</td>' +
         '<td>' + esc(x.type) + '</td>' +
-        '<td><b>₹' + esc(x.price) + '</b></td>' +
+        '<td>' + priceBadge + '</td>' +
         '<td>' + statusBadge + '</td>' +
         '<td id="cell-name-' + esc(x.serial) + '">' + esc(x.name) + '</td>' +
         '<td id="cell-mobile-' + esc(x.serial) + '">' + esc(x.mobile) + '</td>' +
@@ -832,6 +847,10 @@ document.getElementById('xlsBtn').onclick = function(){
   window.location.href = url;
 };
 
+document.getElementById('backupDbBtn').onclick = function(){
+  window.location.href = '/api/backup/db';
+};
+
 document.getElementById('importBtn').onclick = function(){
   document.getElementById('importFileInput').click();
 };
@@ -875,9 +894,9 @@ function checkStorageStatus(){
       var el = document.getElementById('storageNotice');
       if(el){
         if(j.persistent){
-          el.innerHTML = '<span style="color:var(--green);font-weight:700">&#x25CF; Storage: PostgreSQL (Persistent Across All Deploys)</span>';
+          el.innerHTML = '<span style="color:var(--green);font-weight:700">&#x25CF; Storage: ' + esc(j.storage) + '</span>';
         } else {
-          el.innerHTML = '<span style="color:var(--red);font-weight:700">&#x25CF; Storage: Temporary Container Disk</span> &mdash; Add <code>DATABASE_URL</code> in Render Environment to persist forever without resets.';
+          el.innerHTML = '<span style="color:var(--red);font-weight:700">&#x25CF; Storage: Temporary Container Disk</span> &mdash; Click <b>Backup Database (.db)</b> to save a permanent copy to your laptop anytime.';
         }
       }
     })
