@@ -59,9 +59,6 @@ THANK_YOU_MESSAGE = os.environ.get(
     "Thank you for registration! May Goddess Durgamatha bless you and your family."
 ).strip()
 
-# In-memory thread-safe OTP store for Admin 2FA
-PENDING_OTPS = {}
-otp_lock = threading.Lock()
 
 # Database Configuration:
 # When DATABASE_URL is set (Render PostgreSQL, Neon, Supabase), use PostgreSQL.
@@ -669,37 +666,6 @@ def login():
     if not user:
         return jsonify(error="Invalid User ID or Password."), 401
 
-    # 1. Administrator requires OTP verification
-    if user["role"] == "admin":
-        otp_code = str(secrets.randbelow(900000) + 100000)
-        otp_token = secrets.token_hex(16)
-        with otp_lock:
-            PENDING_OTPS[otp_token] = {
-                "user": user,
-                "otp": otp_code,
-                "mobile": ADMIN_MOBILE,
-                "expires_at": time.time() + 300,  # 5 minutes
-                "attempts": 0,
-                "created_at": time.time()
-            }
-        otp_msg = (
-            f"Your SVARA Admin login verification code is {otp_code}. "
-            f"Valid for 5 minutes. Do not share this OTP with anyone."
-        )
-        try:
-            print(f"\n[ADMIN OTP] 🔐 Admin login OTP: {otp_code} -> Mobile: {ADMIN_MOBILE}\n")
-        except Exception:
-            print(f"\n[ADMIN OTP] [LOCK] Admin login OTP: {otp_code} -> Mobile: {ADMIN_MOBILE}\n")
-
-        return jsonify(
-            requires_otp=True,
-            otp_token=otp_token,
-            masked_mobile=mask_mobile(ADMIN_MOBILE),
-            message=f"Verification code sent to {mask_mobile(ADMIN_MOBILE)}.",
-            dev_otp=otp_code if os.environ.get("FLASK_ENV") == "development" or os.environ.get("DEBUG_OTP") else None
-        )
-
-    # 2. Counter staff logs in directly
     register_user_session(user)
     return jsonify(
         success=True,
@@ -707,84 +673,6 @@ def login():
         role=user["role"],
         name=user["name"],
         counter_name=user["counter_name"]
-    )
-
-
-@app.post("/api/auth/verify-otp")
-def verify_otp():
-    data = request.get_json(silent=True) or {}
-    otp_token = str(data.get("otp_token", "")).strip()
-    submitted_otp = str(data.get("otp", "")).strip()
-
-    if not otp_token or not submitted_otp:
-        return jsonify(error="Please provide both OTP token and 6-digit verification code."), 400
-
-    with otp_lock:
-        record = PENDING_OTPS.get(otp_token)
-        if not record:
-            return jsonify(error="Verification session expired or not found. Please log in again."), 400
-
-        if time.time() > record["expires_at"]:
-            del PENDING_OTPS[otp_token]
-            return jsonify(error="Verification code has expired. Please request a new code."), 400
-
-        if record["attempts"] >= 5:
-            del PENDING_OTPS[otp_token]
-            return jsonify(error="Too many failed attempts. For security, please sign in again."), 400
-
-        if not secrets.compare_digest(submitted_otp, record["otp"]):
-            record["attempts"] += 1
-            remaining = 5 - record["attempts"]
-            return jsonify(error=f"Incorrect verification code. {remaining} attempt(s) remaining."), 400
-
-        user = record["user"]
-        del PENDING_OTPS[otp_token]
-
-    register_user_session(user)
-    return jsonify(
-        success=True,
-        username=user["username"],
-        role=user["role"],
-        name=user["name"],
-        counter_name=user["counter_name"]
-    )
-
-
-@app.post("/api/auth/resend-otp")
-def resend_otp():
-    data = request.get_json(silent=True) or {}
-    otp_token = str(data.get("otp_token", "")).strip()
-
-    with otp_lock:
-        record = PENDING_OTPS.get(otp_token)
-        if not record:
-            return jsonify(error="Verification session expired. Please sign in again."), 400
-
-        last_sent = record.get("last_sent", record["created_at"])
-        if time.time() - last_sent < 30:
-            remaining = int(30 - (time.time() - last_sent))
-            return jsonify(error=f"Please wait {remaining} seconds before requesting a new code."), 429
-
-        new_otp = str(secrets.randbelow(900000) + 100000)
-        record["otp"] = new_otp
-        record["expires_at"] = time.time() + 300
-        record["attempts"] = 0
-        record["last_sent"] = time.time()
-
-    otp_msg = (
-        f"Your new SVARA Admin login verification code is {new_otp}. "
-        f"Valid for 5 minutes. Do not share this OTP with anyone."
-    )
-    send_sms(record["mobile"], otp_msg)
-    try:
-        print(f"\n[ADMIN OTP RESEND] 🔐 New Admin verification OTP: {new_otp} -> Mobile: {record['mobile']}\n")
-    except Exception:
-        print(f"\n[ADMIN OTP RESEND] [LOCK] New Admin verification OTP: {new_otp} -> Mobile: {record['mobile']}\n")
-
-    return jsonify(
-        success=True,
-        message=f"New verification code sent to {mask_mobile(record['mobile'])}.",
-        dev_otp=new_otp if os.environ.get("FLASK_ENV") == "development" or os.environ.get("DEBUG_OTP") else None
     )
 
 

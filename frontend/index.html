@@ -129,8 +129,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 </header>
 
 <section id="loginSection" class="hidden">
-  <!-- Step 1: User ID & Password -->
-  <div class="panel login-panel" id="loginCredsPanel">
+  <div class="panel login-panel">
     <div class="tag" style="background:var(--maroon);margin-bottom:10px;">Staff &amp; Admin Sign In</div>
     <h2 style="margin-top:0">Sign In</h2>
     <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
@@ -143,26 +142,6 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="err" id="loginErr"></div>
     <div class="row" style="margin-top:16px">
       <button class="p" id="loginBtn">Sign In</button>
-    </div>
-  </div>
-
-  <!-- Step 2: Admin OTP Verification Input Screen -->
-  <div class="panel login-panel hidden" id="loginOtpPanel">
-    <div class="tag" style="background:var(--green);color:#fff;margin-bottom:10px;">🔐 2-Factor Authentication</div>
-    <h2 style="margin-top:0">Admin OTP Verification</h2>
-    <p style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin-top:-6px;line-height:1.4">
-      An OTP verification code was sent via SMS to your registered mobile: <b id="otpPhoneDisplay" style="color:var(--maroon)"></b>.
-    </p>
-    <label for="otpCode">Enter 6-Digit Code</label>
-    <input id="otpCode" type="tel" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="• • • • • •" style="text-align:center;font-size:26px;letter-spacing:8px;font-weight:700">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-family:Arial,sans-serif;font-size:12px;color:#6b5a4a">
-      <span>⏱️ Expires in: <b id="otpCountdown" style="color:var(--maroon)">05:00</b></span>
-      <button type="button" class="s" id="resendOtpBtn" style="padding:4px 10px;font-size:12px">Resend Code</button>
-    </div>
-    <div class="err" id="otpErr"></div>
-    <div class="row" style="margin-top:16px">
-      <button type="button" class="p" id="verifyOtpBtn">Verify &amp; Sign In</button>
-      <button type="button" class="s" id="otpBackBtn">← Back</button>
     </div>
   </div>
 </section>
@@ -379,48 +358,12 @@ function tick(){
 setInterval(tick, 1000);
 tick();
 
-var activeOtpToken = null;
-var otpCountdownTimer = null;
-var otpSecondsRemaining = 0;
-
-function stopOtpCountdown(){
-  if(otpCountdownTimer){
-    clearInterval(otpCountdownTimer);
-    otpCountdownTimer = null;
-  }
-}
-
-function startOtpCountdown(seconds){
-  stopOtpCountdown();
-  otpSecondsRemaining = seconds;
-  function updateDisplay(){
-    var m = Math.floor(otpSecondsRemaining / 60);
-    var s = otpSecondsRemaining % 60;
-    var el = document.getElementById('otpCountdown');
-    if(el) el.textContent = two(m) + ':' + two(s);
-    if(otpSecondsRemaining <= 0){
-      stopOtpCountdown();
-      if(el) el.textContent = 'Expired';
-    } else {
-      otpSecondsRemaining--;
-    }
-  }
-  updateDisplay();
-  otpCountdownTimer = setInterval(updateDisplay, 1000);
-}
-
 function showLogin(msg){
-  stopOtpCountdown();
-  activeOtpToken = null;
   document.getElementById('loginSection').classList.remove('hidden');
-  document.getElementById('loginCredsPanel').classList.remove('hidden');
-  document.getElementById('loginOtpPanel').classList.add('hidden');
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('authBar').classList.add('hidden');
   document.getElementById('loginPass').value = '';
   document.getElementById('loginErr').textContent = msg || '';
-  document.getElementById('otpCode').value = '';
-  document.getElementById('otpErr').textContent = '';
   setTimeout(function(){ document.getElementById('loginUser').focus(); }, 100);
 }
 
@@ -489,17 +432,6 @@ function doLogin(){
     });
   })
   .then(function(res){
-    if(res.requires_otp){
-      activeOtpToken = res.otp_token;
-      document.getElementById('otpPhoneDisplay').textContent = res.masked_mobile || 'your registered mobile';
-      document.getElementById('loginCredsPanel').classList.add('hidden');
-      document.getElementById('loginOtpPanel').classList.remove('hidden');
-      document.getElementById('otpCode').value = '';
-      document.getElementById('otpErr').textContent = '';
-      startOtpCountdown(300);
-      setTimeout(function(){ document.getElementById('otpCode').focus(); }, 150);
-      return;
-    }
     showApp({ username: res.username, role: res.role, name: res.name, counter_name: res.counter_name });
   })
   .catch(function(e){
@@ -511,91 +443,9 @@ function doLogin(){
   });
 }
 
-function doVerifyOtp(){
-  var code = document.getElementById('otpCode').value.trim();
-  var err = document.getElementById('otpErr');
-  var btn = document.getElementById('verifyOtpBtn');
-  if(!code || code.length !== 6){
-    err.textContent = 'Please enter the 6-digit verification code.';
-    return;
-  }
-  if(!activeOtpToken){
-    err.textContent = 'Session expired. Please click Back and sign in again.';
-    return;
-  }
-  err.textContent = '';
-  btn.disabled = true;
-  btn.textContent = 'Verifying...';
-
-  fetch('/api/auth/verify-otp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ otp_token: activeOtpToken, otp: code })
-  })
-  .then(function(r){
-    return r.json().catch(function(){ return {}; }).then(function(j){
-      if(!r.ok) throw new Error(j.error || 'Verification failed');
-      return j;
-    });
-  })
-  .then(function(res){
-    stopOtpCountdown();
-    activeOtpToken = null;
-    showApp({ username: res.username, role: res.role, name: res.name, counter_name: res.counter_name });
-  })
-  .catch(function(e){
-    err.textContent = e.message;
-  })
-  .then(function(){
-    btn.disabled = false;
-    btn.textContent = 'Verify & Sign In';
-  });
-}
-
-function doResendOtp(){
-  var err = document.getElementById('otpErr');
-  var btn = document.getElementById('resendOtpBtn');
-  if(!activeOtpToken){
-    err.textContent = 'Session expired. Please click Back and sign in again.';
-    return;
-  }
-  err.textContent = '';
-  btn.disabled = true;
-  btn.textContent = 'Sending...';
-
-  fetch('/api/auth/resend-otp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ otp_token: activeOtpToken })
-  })
-  .then(function(r){
-    return r.json().catch(function(){ return {}; }).then(function(j){
-      if(!r.ok) throw new Error(j.error || 'Failed to resend code');
-      return j;
-    });
-  })
-  .then(function(res){
-    startOtpCountdown(300);
-    document.getElementById('otpCode').value = '';
-    showToast('✉️ New verification code sent to admin mobile!');
-  })
-  .catch(function(e){
-    err.textContent = e.message;
-  })
-  .then(function(){
-    btn.disabled = false;
-    btn.textContent = 'Resend Code';
-  });
-}
-
 document.getElementById('loginBtn').onclick = doLogin;
 document.getElementById('loginPass').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
 document.getElementById('loginUser').onkeydown = function(e){ if(e.key === 'Enter') doLogin(); };
-
-document.getElementById('verifyOtpBtn').onclick = doVerifyOtp;
-document.getElementById('otpCode').onkeydown = function(e){ if(e.key === 'Enter') doVerifyOtp(); };
-document.getElementById('resendOtpBtn').onclick = doResendOtp;
-document.getElementById('otpBackBtn').onclick = function(){ showLogin(); };
 
 document.getElementById('logoutBtn').onclick = function(){
   fetch('/api/auth/logout', { method: 'POST' })
