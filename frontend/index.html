@@ -446,11 +446,23 @@ function refresh(){
       var b = res.counterBreakdown;
       var sumHtml = '';
       var totalRev = 0;
+      var tabsHtml = '<button class="tab-btn ' + (activeCounterFilter === 'all' ? 'active' : '') + '" data-counter="all">All Counters (Combined)</button>';
       Object.keys(b).forEach(function(uk){
         sumHtml += '<div class="summary-card"><b>' + esc(b[uk].name) + '</b>' + b[uk].count + ' active' + (b[uk].void_count ? ' (' + b[uk].void_count + ' void)' : '') + ' &bull; ₹' + b[uk].amount.toLocaleString('en-IN') + '</div>';
         totalRev += b[uk].amount;
+        var isAct = (activeCounterFilter === uk) ? 'active' : '';
+        tabsHtml += '<button class="tab-btn ' + isAct + '" data-counter="' + esc(uk) + '">' + esc(b[uk].name) + '</button>';
       });
       document.getElementById('adminSummary').innerHTML = sumHtml;
+      document.getElementById('counterTabs').innerHTML = tabsHtml;
+      document.querySelectorAll('#counterTabs .tab-btn').forEach(function(btn){
+        btn.onclick = function(){
+          document.querySelectorAll('#counterTabs .tab-btn').forEach(function(x){ x.classList.remove('active'); });
+          btn.classList.add('active');
+          activeCounterFilter = btn.dataset.counter || 'all';
+          renderTable();
+        };
+      });
       document.getElementById('counts').innerHTML = '<b>Combined Total:</b> ' + totActive + ' active tokens' + (totVoid ? ' (' + totVoid + ' voided)' : '') + ' &bull; Total Collection: <b>₹' + totalRev.toLocaleString('en-IN') + '</b>';
     } else {
       var myStats = res.myStats || { count: 0, amount: 0 };

@@ -62,29 +62,29 @@ PRICES = {
 # User accounts configuration:
 # 1 Admin (handles all counters) + 3 Separate Counter users with independent credentials
 USERS = {
-    "admin": {
-        "password": os.environ.get("ADMIN_PASSWORD", os.environ.get("SVARA_PASSWORD", "admin@svara2026")),
+    os.environ.get("ADMIN_USER", os.environ.get("SVARA_USER", "admin")).strip().lower(): {
+        "password": os.environ.get("ADMIN_PASSWORD", os.environ.get("SVARA_PASSWORD", "admin@svara2026")).strip(),
         "role": "admin",
-        "name": "Administrator",
+        "name": os.environ.get("ADMIN_NAME", "Administrator"),
         "counter_name": "Main / All Counters"
     },
-    "counter1": {
-        "password": os.environ.get("COUNTER1_PASSWORD", "counter1@2026"),
+    os.environ.get("COUNTER1_USER", "counter1").strip().lower(): {
+        "password": os.environ.get("COUNTER1_PASSWORD", "counter1@2026").strip(),
         "role": "counter",
-        "name": "Counter 1",
-        "counter_name": "Counter 1"
+        "name": os.environ.get("COUNTER1_NAME", "Counter 1"),
+        "counter_name": os.environ.get("COUNTER1_NAME", "Counter 1")
     },
-    "counter2": {
-        "password": os.environ.get("COUNTER2_PASSWORD", "counter2@2026"),
+    os.environ.get("COUNTER2_USER", "counter2").strip().lower(): {
+        "password": os.environ.get("COUNTER2_PASSWORD", "counter2@2026").strip(),
         "role": "counter",
-        "name": "Counter 2",
-        "counter_name": "Counter 2"
+        "name": os.environ.get("COUNTER2_NAME", "Counter 2"),
+        "counter_name": os.environ.get("COUNTER2_NAME", "Counter 2")
     },
-    "counter3": {
-        "password": os.environ.get("COUNTER3_PASSWORD", "counter3@2026"),
+    os.environ.get("COUNTER3_USER", "counter3").strip().lower(): {
+        "password": os.environ.get("COUNTER3_PASSWORD", "counter3@2026").strip(),
         "role": "counter",
-        "name": "Counter 3",
-        "counter_name": "Counter 3"
+        "name": os.environ.get("COUNTER3_NAME", "Counter 3"),
+        "counter_name": os.environ.get("COUNTER3_NAME", "Counter 3")
     }
 }
 
@@ -267,32 +267,29 @@ def authenticate_user(username, password):
     user_key = str(username).strip().lower()
     password = str(password).strip()
 
-    custom_admin = os.environ.get("SVARA_USER", "").strip().lower()
-    if user_key in ("admin", "administrator", custom_admin):
-        user_key = "admin"
+    # Allow "administrator" alias for whatever admin user is configured
+    if user_key in ("admin", "administrator"):
+        for k, v in USERS.items():
+            if v["role"] == "admin":
+                user_key = k
+                break
 
     if user_key not in USERS:
         return None
 
     cfg = USERS[user_key]
+    configured_password = cfg["password"].strip()
 
-    # Collect all acceptable passwords for this user
-    allowed_passwords = [cfg["password"]]
-    if user_key == "admin":
-        allowed_passwords.extend([
-            "admin@svara2026",
-            "svara@2026",
-            "admin",
-            "admin123",
-            os.environ.get("ADMIN_PASSWORD", ""),
-            os.environ.get("SVARA_PASSWORD", "")
-        ])
-    elif user_key == "counter1":
-        allowed_passwords.extend(["counter1@2026", "counter1", os.environ.get("COUNTER1_PASSWORD", "")])
-    elif user_key == "counter2":
-        allowed_passwords.extend(["counter2@2026", "counter2", os.environ.get("COUNTER2_PASSWORD", "")])
-    elif user_key == "counter3":
-        allowed_passwords.extend(["counter3@2026", "counter3", os.environ.get("COUNTER3_PASSWORD", "")])
+    allowed_passwords = [configured_password]
+    # Retain convenience fallbacks only if default passwords have not been changed
+    if cfg["role"] == "admin" and configured_password == "admin@svara2026":
+        allowed_passwords.extend(["svara@2026", "admin", "admin123"])
+    elif user_key == "counter1" and configured_password == "counter1@2026":
+        allowed_passwords.append("counter1")
+    elif user_key == "counter2" and configured_password == "counter2@2026":
+        allowed_passwords.append("counter2")
+    elif user_key == "counter3" and configured_password == "counter3@2026":
+        allowed_passwords.append("counter3")
 
     allowed_passwords = [p.strip() for p in allowed_passwords if p and p.strip()]
 
