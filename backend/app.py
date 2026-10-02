@@ -10,11 +10,14 @@ Multi-User Counter Management & Secure Token Generation:
   - Automated Save: Tokens are saved atomically upon generation
   - Dynamic Pricing: Royal Enfield ₹301, Silver ₹201, Saree ₹101
 """
+import glob
+import gzip
 import io
 import json
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import sys
 import threading
@@ -73,6 +76,7 @@ DB_PATH = os.environ.get("SVARA_DB", os.path.join(ROOT, "database", "svara.db"))
 FRONTEND = os.path.join(ROOT, "frontend")
 EXPORT_DIR = os.path.join(ROOT, "exports")
 EXPORT_FILE = os.path.join(EXPORT_DIR, "SVARA_2026_Tokens.xlsx")
+BACKUP_DIR = os.path.join(ROOT, "backups")
 
 TZ_NAME = os.environ.get("SVARA_TZ", "Asia/Kolkata")
 
@@ -165,6 +169,7 @@ def connect():
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(EXPORT_DIR, exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
     db = connect()
     try:
         if db.is_pg:
@@ -234,6 +239,38 @@ def init_db():
                     logged_in_at  TEXT NOT NULL
                 );
             """)
+
+            # Reprint Audit Logging Table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS reprint_logs (
+                    id            SERIAL PRIMARY KEY,
+                    token_id      INTEGER NOT NULL,
+                    token_serial  VARCHAR(20) NOT NULL,
+                    clerk_id      VARCHAR(50) NOT NULL,
+                    clerk_name    VARCHAR(100) NOT NULL,
+                    reason        TEXT DEFAULT 'Lost or torn receipt',
+                    reprinted_at  VARCHAR(40) NOT NULL
+                );
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_token ON reprint_logs(token_serial);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_clerk ON reprint_logs(clerk_id);")
+
+            # System & Admin Security Audit Logs (Wipe attempts, backups, security events)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id            SERIAL PRIMARY KEY,
+                    action        VARCHAR(50) NOT NULL,
+                    user_id       VARCHAR(50) NOT NULL,
+                    ip_address    VARCHAR(50),
+                    status        VARCHAR(20) NOT NULL,
+                    details       TEXT,
+                    created_at    VARCHAR(40) NOT NULL
+                );
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_mobile ON tokens(mobile);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_serial ON tokens(serial);")
             db.commit()
         else:
             with open(os.path.join(ROOT, "database", "schema.sql"), encoding="utf-8") as f:
@@ -270,6 +307,38 @@ def init_db():
                         logged_in_at  TEXT NOT NULL
                     )
                 """)
+
+            # SQLite Reprint Audit Logging Table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS reprint_logs (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token_id      INTEGER NOT NULL,
+                    token_serial  TEXT NOT NULL,
+                    clerk_id      TEXT NOT NULL,
+                    clerk_name    TEXT NOT NULL,
+                    reason        TEXT DEFAULT 'Lost or torn receipt',
+                    reprinted_at  TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_token ON reprint_logs(token_serial)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_clerk ON reprint_logs(clerk_id)")
+
+            # SQLite Audit Logs Table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    action        TEXT NOT NULL,
+                    user_id       TEXT NOT NULL,
+                    ip_address    TEXT,
+                    status        TEXT NOT NULL,
+                    details       TEXT,
+                    created_at    TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_mobile ON tokens(mobile)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_serial ON tokens(serial)")
 
         # Counter synchronization & Floor protection:
         # Guarantee counters.last_no is NEVER lower than any existing token serial number
@@ -400,6 +469,252 @@ def require_auth(f):
 
 def fmt_serial(prefix, n):
     return f"{prefix}{n:05d}"
+
+
+
+def row_val(r, key, default=None):
+    if r is None:
+        return default
+    if isinstance(r, dict):
+        return r.get(key, default)
+    try:
+        val = r[key]
+        return val if val is not None else default
+    except (IndexError, KeyError):
+        return default
+
+def log_reprint(db, token_id, token_serial, clerk_id, clerk_name, reason="Lost or torn receipt"):
+    """
+    Middleware/audit function to log every token reprint event.
+    """
+    now_iso = datetime.now().isoformat()
+    try:
+        db.execute(
+            "INSERT INTO reprint_logs (token_id, token_serial, clerk_id, clerk_name, reason, reprinted_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (token_id, token_serial, clerk_id, clerk_name, reason, now_iso)
+        )
+    except Exception as e:
+        print(f"[WARN] Failed to write reprint log: {e}")
+
+
+def log_audit(db, action, user_id, status, details="", ip_address=""):
+    """
+    Records security-critical administrative actions (wipe attempts, backups, etc.)
+    into an immutable audit log table.
+    """
+    now_iso = datetime.now().isoformat()
+    try:
+        db.execute(
+            "INSERT INTO audit_logs (action, user_id, ip_address, status, details, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (action, user_id, ip_address, status, details, now_iso)
+        )
+    except Exception as e:
+        print(f"[WARN] Failed to write audit log: {e}")
+
+
+def upload_to_cloud(filepath, filename):
+    """
+    Uploads compressed backup to cloud storage (Google Drive or Webhook).
+    """
+    # 1. Custom Webhook / Cloud Storage Endpoint
+    webhook_url = os.environ.get("CLOUD_BACKUP_WEBHOOK_URL")
+    if webhook_url:
+        try:
+            with open(filepath, "rb") as f:
+                data = f.read()
+            req = urllib.request.Request(
+                webhook_url,
+                data=data,
+                headers={
+                    "Content-Type": "application/gzip",
+                    "X-Filename": filename,
+                    "User-Agent": "SVARA-Backup/1.0"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                print(f"[CLOUD BACKUP] Uploaded to cloud webhook (HTTP {resp.status})")
+                return {"uploaded": True, "provider": "Webhook", "status": resp.status}
+        except Exception as e:
+            print(f"[WARN Cloud Backup] Webhook upload failed: {e}")
+            return {"uploaded": False, "provider": "Webhook", "error": str(e)}
+
+    # 2. Google Drive API Hook
+    gdrive_folder = os.environ.get("GDRIVE_FOLDER_ID")
+    if gdrive_folder:
+        try:
+            from googleapiclient.discovery import build
+            from googleapiclient.http import MediaFileUpload
+            from google.oauth2 import service_account
+            sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if sa_path and os.path.exists(sa_path):
+                creds = service_account.Credentials.from_service_account_file(
+                    sa_path,
+                    scopes=['https://www.googleapis.com/auth/drive.file']
+                )
+                service = build('drive', 'v3', credentials=creds)
+                file_metadata = {'name': filename, 'parents': [gdrive_folder]}
+                media = MediaFileUpload(filepath, mimetype='application/gzip')
+                drive_file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+                print(f"[GDRIVE] Backup uploaded successfully: {drive_file.get('id')}")
+                return {"uploaded": True, "provider": "GoogleDrive", "file_id": drive_file.get('id')}
+        except Exception as e:
+            print(f"[WARN GDrive] Cloud upload failed: {e}")
+            return {"uploaded": False, "provider": "GoogleDrive", "error": str(e)}
+
+    return {"uploaded": False, "provider": "LocalOnly", "message": "Saved securely to local backup directory."}
+
+
+def create_compressed_backup(tag="manual"):
+    """
+    Creates an atomic compressed SQL dump (.sql.gz) of all tables.
+    Rotates existing backups keeping the newest 30.
+    """
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"backup_svara_{timestamp_str}_{tag}.sql.gz"
+    backup_filepath = os.path.join(BACKUP_DIR, backup_filename)
+
+    db = connect()
+    try:
+        sql_lines = [
+            f"-- SVARA 2026 Database Backup ({timestamp_str})",
+            "-- Automated Compressed Database Export\n"
+        ]
+
+        # Dump counters
+        sql_lines.append("-- TABLE: counters")
+        c_rows = db.execute("SELECT * FROM counters").fetchall()
+        for r in c_rows:
+            tk = r["type_key"]
+            lbl = str(r["label"]).replace("'", "''")
+            pfx = r["prefix"]
+            lno = r["last_no"]
+            sql_lines.append(f"INSERT INTO counters (type_key, label, prefix, last_no) VALUES ('{tk}', '{lbl}', '{pfx}', {lno}) ON CONFLICT (type_key) DO UPDATE SET last_no = {lno};")
+
+        # Dump tokens
+        sql_lines.append("\n-- TABLE: tokens")
+        t_rows = db.execute("SELECT * FROM tokens ORDER BY id ASC").fetchall()
+        for r in t_rows:
+            ser = str(r["serial"]).replace("'", "''")
+            tk = str(r["type_key"]).replace("'", "''")
+            tt = str(r["token_type"]).replace("'", "''")
+            pr = int(r["price"] or 0)
+            st = str(r["status"] or "ACTIVE").replace("'", "''")
+            vat = f"'{r['voided_at']}'" if row_val(r, "voided_at") else "NULL"
+            vby = f"'{r['voided_by']}'" if row_val(r, "voided_by") else "NULL"
+            nm = str(r["name"] or "").replace("'", "''")
+            mob = str(r["mobile"] or "").replace("'", "''")
+            pay = str(r["payment"] or "").replace("'", "''")
+            cby = str(r["created_by"] or "admin").replace("'", "''")
+            cnm = str(r["counter_name"] or "Main Counter").replace("'", "''")
+            cdt = str(r["created_date"] or "").replace("'", "''")
+            ctm = str(r["created_time"] or "").replace("'", "''")
+            cat = str(r["created_at"] or "").replace("'", "''")
+            sql_lines.append(
+                f"INSERT INTO tokens (serial, type_key, token_type, price, status, voided_at, voided_by, name, mobile, payment, created_by, counter_name, created_date, created_time, created_at) "
+                f"VALUES ('{ser}', '{tk}', '{tt}', {pr}, '{st}', {vat}, {vby}, '{nm}', '{mob}', '{pay}', '{cby}', '{cnm}', '{cdt}', '{ctm}', '{cat}') "
+                f"ON CONFLICT (serial) DO NOTHING;"
+            )
+
+        # Dump reprint_logs
+        try:
+            rp_rows = db.execute("SELECT * FROM reprint_logs ORDER BY id ASC").fetchall()
+            if rp_rows:
+                sql_lines.append("\n-- TABLE: reprint_logs")
+                for r in rp_rows:
+                    tid = r["token_id"]
+                    tser = str(r["token_serial"]).replace("'", "''")
+                    cid = str(r["clerk_id"]).replace("'", "''")
+                    cnm = str(r["clerk_name"]).replace("'", "''")
+                    rsn = str(row_val(r, "reason", "")).replace("'", "''")
+                    rat = str(r["reprinted_at"]).replace("'", "''")
+                    sql_lines.append(
+                        f"INSERT INTO reprint_logs (token_id, token_serial, clerk_id, clerk_name, reason, reprinted_at) "
+                        f"VALUES ({tid}, '{tser}', '{cid}', '{cnm}', '{rsn}', '{rat}');"
+                    )
+        except Exception:
+            pass
+
+        # Dump audit_logs
+        try:
+            al_rows = db.execute("SELECT * FROM audit_logs ORDER BY id ASC").fetchall()
+            if al_rows:
+                sql_lines.append("\n-- TABLE: audit_logs")
+                for r in al_rows:
+                    act = str(r["action"]).replace("'", "''")
+                    uid = str(r["user_id"]).replace("'", "''")
+                    ip = str(row_val(r, "ip_address", "")).replace("'", "''")
+                    st = str(r["status"]).replace("'", "''")
+                    dtl = str(row_val(r, "details", "")).replace("'", "''")
+                    cat = str(r["created_at"]).replace("'", "''")
+                    sql_lines.append(
+                        f"INSERT INTO audit_logs (action, user_id, ip_address, status, details, created_at) "
+                        f"VALUES ('{act}', '{uid}', '{ip}', '{st}', '{dtl}', '{cat}');"
+                    )
+        except Exception:
+            pass
+
+        sql_content = "\n".join(sql_lines).encode("utf-8")
+
+        # Compress to .sql.gz
+        with gzip.open(backup_filepath, "wb") as gz_file:
+            gz_file.write(sql_content)
+
+        file_size_kb = round(os.path.getsize(backup_filepath) / 1024, 2)
+        print(f"[BACKUP] Created compressed backup: {backup_filename} ({file_size_kb} KB)")
+
+        # Rotate old backups keeping newest 30
+        try:
+            existing = sorted(
+                glob.glob(os.path.join(BACKUP_DIR, "backup_svara_*.sql.gz")),
+                key=os.path.getmtime
+            )
+            while len(existing) > 30:
+                oldest = existing.pop(0)
+                try:
+                    os.remove(oldest)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        cloud_status = upload_to_cloud(backup_filepath, backup_filename)
+
+        return {
+            "success": True,
+            "filename": backup_filename,
+            "filepath": backup_filepath,
+            "size_kb": file_size_kb,
+            "token_count": len(t_rows),
+            "cloud_status": cloud_status
+        }
+    finally:
+        db.close()
+
+
+_scheduler_started = False
+_scheduler_lock = threading.Lock()
+
+def start_backup_scheduler():
+    global _scheduler_started
+    with _scheduler_lock:
+        if _scheduler_started:
+            return
+        _scheduler_started = True
+
+    def backup_loop():
+        # Wait 45 seconds after process start
+        time.sleep(45)
+        while True:
+            try:
+                create_compressed_backup(tag="scheduled")
+            except Exception as e:
+                print(f"[WARN] Scheduled periodic backup error: {e}")
+            # Run every 6 hours (21600 seconds)
+            time.sleep(21600)
+
+    t = threading.Thread(target=backup_loop, daemon=True, name="BackupScheduler")
+    t.start()
 
 
 def mask_mobile(m):
@@ -1007,6 +1322,389 @@ def edit_token(user, serial):
         db.close()
 
 
+
+@app.post("/api/tokens/reprint")
+@require_auth
+def reprint_token(user):
+    """
+    1. Reprint Token Option:
+       Allows counter staff to search by Reference ID (serial) or Mobile Number
+       to reprint a clean copy of the token. Records every reprint action
+       in the reprint_logs audit table (token_id, clerk_id, timestamp).
+    """
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query", "")).strip()
+    reason = str(data.get("reason", "Lost or torn receipt")).strip()
+    token_id = data.get("token_id")
+
+    if not query and not token_id:
+        return jsonify(error="Please provide a Token Serial / Reference ID or Devotee Mobile Number."), 400
+
+    db = connect()
+    try:
+        matched_token = None
+        if token_id:
+            row = db.execute("SELECT * FROM tokens WHERE id = ?", (token_id,)).fetchone()
+            if row:
+                matched_token = token_json(row)
+
+        if not matched_token and query:
+            clean_q = query.upper()
+            # 1. Try exact serial match
+            row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (clean_q,)).fetchone()
+            if row:
+                matched_token = token_json(row)
+            else:
+                # 2. Try mobile number match
+                clean_mobile = re.sub(r"\D", "", query)
+                if len(clean_mobile) >= 10:
+                    clean_mobile = clean_mobile[-10:]
+                    rows = db.execute("SELECT * FROM tokens WHERE mobile = ? ORDER BY id DESC", (clean_mobile,)).fetchall()
+                    if len(rows) == 1:
+                        matched_token = token_json(rows[0])
+                    elif len(rows) > 1:
+                        tokens_list = [token_json(r) for r in rows]
+                        return jsonify(
+                            multiple_matches=True,
+                            count=len(tokens_list),
+                            tokens=tokens_list,
+                            message=f"Found {len(tokens_list)} tokens for mobile {clean_mobile}. Please choose which token to reprint."
+                        )
+
+        if not matched_token:
+            return jsonify(error=f"No token record found matching '{query}'."), 404
+
+        # Audit Logging: Record reprint event
+        log_reprint(
+            db=db,
+            token_id=matched_token["id"],
+            token_serial=matched_token["serial"],
+            clerk_id=user["username"],
+            clerk_name=user["name"],
+            reason=reason
+        )
+        db.commit()
+
+        # Add reprint flag and metadata
+        matched_token["is_reprint"] = True
+        matched_token["reprint_reason"] = reason
+
+        return jsonify(
+            success=True,
+            reprint=True,
+            token=matched_token,
+            reprinted_at=datetime.now().strftime("%d/%m/%Y %I:%M:%S %p"),
+            clerk_id=user["username"],
+            clerk_name=user["name"],
+            message=f"Clean reprint generated for Token {matched_token['serial']}."
+        )
+    finally:
+        db.close()
+
+
+@app.get("/api/tokens/reprint-logs")
+@require_auth
+def get_reprint_logs(user):
+    """
+    Returns recent reprint audit logs.
+    """
+    limit = int(request.args.get("limit", 50))
+    db = connect()
+    try:
+        rows = db.execute(
+            "SELECT * FROM reprint_logs ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        logs = []
+        for r in rows:
+            logs.append({
+                "id": r["id"],
+                "token_id": r["token_id"],
+                "token_serial": r["token_serial"],
+                "clerk_id": r["clerk_id"],
+                "clerk_name": r["clerk_name"],
+                "reason": row_val(r, "reason", ""),
+                "reprinted_at": r["reprinted_at"]
+            })
+        return jsonify(logs=logs, count=len(logs))
+    finally:
+        db.close()
+
+
+@app.get("/api/devotees/search")
+@require_auth
+def search_devotees(user):
+    """
+    2. Quick Lookup / Search by Mobile Number:
+       Fast, indexed search endpoint that queries devotee records and recent
+       bookings by mobile number (or serial) to pull up details instantly without re-typing names.
+    """
+    q = str(request.args.get("q", "")).strip()
+    if not q:
+        return jsonify(results=[], devotee=None, count=0)
+
+    clean_digits = re.sub(r"\D", "", q)
+    db = connect()
+    try:
+        if re.search(r"[A-Za-z]", q):
+            # Contains letters -> search by Serial or Name
+            search_param = f"%{q.upper()}%"
+            rows = db.execute(
+                "SELECT * FROM tokens WHERE UPPER(serial) LIKE ? OR UPPER(name) LIKE ? ORDER BY id DESC LIMIT 15",
+                (search_param, search_param)
+            ).fetchall()
+        elif clean_digits:
+            # Pure digits -> search by Mobile Number
+            search_param = f"%{clean_digits}%"
+            rows = db.execute(
+                "SELECT * FROM tokens WHERE mobile LIKE ? ORDER BY id DESC LIMIT 15",
+                (search_param,)
+            ).fetchall()
+        else:
+            search_param = f"%{q.upper()}%"
+            rows = db.execute(
+                "SELECT * FROM tokens WHERE UPPER(serial) LIKE ? OR UPPER(name) LIKE ? ORDER BY id DESC LIMIT 15",
+                (search_param, search_param)
+            ).fetchall()
+
+        results = [token_json(r) for r in rows]
+        devotee_info = None
+        if results:
+            latest = results[0]
+            devotee_info = {
+                "name": latest["name"],
+                "mobile": latest["mobile"],
+                "last_serial": latest["serial"],
+                "last_type": latest["type"],
+                "total_bookings": len(results)
+            }
+
+        return jsonify(
+            query=q,
+            count=len(results),
+            results=results,
+            devotee=devotee_info
+        )
+    finally:
+        db.close()
+
+
+@app.get("/api/reports/shift")
+@require_auth
+def shift_inventory_report(user):
+    """
+    3. Inventory Breakdown & Grand Totals Report:
+       Generates an end-of-shift / daily report showing individual token counts
+       and total amounts for each specific category (Royal Enfield, Silver, Saree),
+       with a summary footer displaying the full combined grand totals.
+    """
+    date_filter = request.args.get("date", "today").strip()
+    counter_filter = request.args.get("counter", "all").strip()
+
+    if date_filter.lower() == "today":
+        today_date, _, _ = now_parts()
+        target_date = today_date
+    elif date_filter.lower() == "all":
+        target_date = None
+    else:
+        target_date = date_filter
+
+    db = connect()
+    try:
+        query = "SELECT * FROM tokens WHERE 1=1"
+        params = []
+
+        if target_date:
+            query += " AND created_date = ?"
+            params.append(target_date)
+
+        if user["role"] != "admin":
+            query += " AND LOWER(created_by) = ?"
+            params.append(user["username"].lower())
+        elif counter_filter and counter_filter != "all":
+            query += " AND LOWER(created_by) = ?"
+            params.append(counter_filter.lower())
+
+        query += " ORDER BY id ASC"
+        rows = db.execute(query, tuple(params)).fetchall()
+
+        categories = {
+            "RE": {
+                "key": "RE",
+                "label": "Royal Enfield",
+                "prefix": "B",
+                "unit_price": PRICES.get("RE", 301),
+                "active_count": 0,
+                "void_count": 0,
+                "total_count": 0,
+                "cash_count": 0,
+                "cash_amount": 0,
+                "upi_count": 0,
+                "upi_amount": 0,
+                "total_amount": 0,
+                "first_serial": None,
+                "last_serial": None
+            },
+            "SI": {
+                "key": "SI",
+                "label": "Silver",
+                "prefix": "S",
+                "unit_price": PRICES.get("SI", 201),
+                "active_count": 0,
+                "void_count": 0,
+                "total_count": 0,
+                "cash_count": 0,
+                "cash_amount": 0,
+                "upi_count": 0,
+                "upi_amount": 0,
+                "total_amount": 0,
+                "first_serial": None,
+                "last_serial": None
+            },
+            "SA": {
+                "key": "SA",
+                "label": "Saree",
+                "prefix": "SA",
+                "unit_price": PRICES.get("SA", 0),
+                "active_count": 0,
+                "void_count": 0,
+                "total_count": 0,
+                "cash_count": 0,
+                "cash_amount": 0,
+                "upi_count": 0,
+                "upi_amount": 0,
+                "total_amount": 0,
+                "first_serial": None,
+                "last_serial": None
+            }
+        }
+
+        grand_totals = {
+            "active_count": 0,
+            "void_count": 0,
+            "total_count": 0,
+            "cash_count": 0,
+            "cash_amount": 0,
+            "upi_count": 0,
+            "upi_amount": 0,
+            "total_amount": 0
+        }
+
+        for r in rows:
+            tk = r["type_key"]
+            if tk not in categories:
+                continue
+            cat = categories[tk]
+            is_void = (r["status"] == "VOID")
+            price = int(r["price"] or cat["unit_price"])
+            pay = r["payment"]
+            ser = r["serial"]
+
+            cat["total_count"] += 1
+            if not cat["first_serial"]:
+                cat["first_serial"] = ser
+            cat["last_serial"] = ser
+
+            if is_void:
+                cat["void_count"] += 1
+                grand_totals["void_count"] += 1
+            else:
+                cat["active_count"] += 1
+                cat["total_amount"] += price
+                grand_totals["active_count"] += 1
+                grand_totals["total_amount"] += price
+
+                if pay == "Cash":
+                    cat["cash_count"] += 1
+                    cat["cash_amount"] += price
+                    grand_totals["cash_count"] += 1
+                    grand_totals["cash_amount"] += price
+                elif pay == "UPI":
+                    cat["upi_count"] += 1
+                    cat["upi_amount"] += price
+                    grand_totals["upi_count"] += 1
+                    grand_totals["upi_amount"] += price
+
+            grand_totals["total_count"] += 1
+
+        today_d, today_t, _ = now_parts()
+        return jsonify({
+            "report_date": target_date or "All Time",
+            "counter": counter_filter if user["role"] == "admin" else user["name"],
+            "generated_by": user["name"],
+            "generated_at": f"{today_d} {today_t}",
+            "categories": [categories["RE"], categories["SI"], categories["SA"]],
+            "grand_totals": grand_totals
+        })
+    finally:
+        db.close()
+
+
+@app.post("/api/backup/create")
+@require_auth
+def manual_backup(user):
+    """
+    4. Backup & Admin Safeguards:
+       Creates an on-demand compressed database backup (.sql.gz)
+       and triggers cloud upload if configured.
+    """
+    res = create_compressed_backup(tag=f"manual_{user['username']}")
+    db = connect()
+    try:
+        log_audit(
+            db=db,
+            action="BACKUP_MANUAL",
+            user_id=user["username"],
+            status="SUCCESS",
+            details=f"Backup {res['filename']} ({res['size_kb']} KB) created by {user['name']}."
+        )
+        db.commit()
+    finally:
+        db.close()
+    return jsonify(res)
+
+
+@app.get("/api/backup/download-latest")
+@require_auth
+def download_latest_backup(user):
+    """
+    Downloads the most recent compressed database backup (.sql.gz).
+    """
+    existing = sorted(
+        glob.glob(os.path.join(BACKUP_DIR, "backup_svara_*.sql.gz")),
+        key=os.path.getmtime,
+        reverse=True
+    )
+    if not existing:
+        # Create one immediately if none exists
+        res = create_compressed_backup(tag="on_demand")
+        filepath = res["filepath"]
+    else:
+        filepath = existing[0]
+
+    return send_file(
+        filepath,
+        mimetype="application/gzip",
+        as_attachment=True,
+        download_name=os.path.basename(filepath)
+    )
+
+
+@app.get("/api/backup/list")
+@require_auth
+def list_backups(user):
+    """
+    Returns list of local backups available.
+    """
+    files = []
+    for fp in sorted(glob.glob(os.path.join(BACKUP_DIR, "backup_svara_*.sql.gz")), key=os.path.getmtime, reverse=True):
+        fn = os.path.basename(fp)
+        size_kb = round(os.path.getsize(fp) / 1024, 2)
+        mtime = datetime.fromtimestamp(os.path.getmtime(fp)).strftime("%d/%m/%Y %I:%M:%S %p")
+        files.append({"filename": fn, "size_kb": size_kb, "created_at": mtime})
+    return jsonify(backups=files, count=len(files))
+
+
 @app.post("/api/tokens/<serial>/void")
 @app.delete("/api/tokens/<serial>")
 @require_auth
@@ -1050,38 +1748,79 @@ def void_token(user, serial):
 
 
 @app.post("/api/admin/wipe")
-@require_auth
-def wipe_database(user):
+def wipe_database():
     """
-    Admin-only full database wipe.
-    Permanently deletes all token records and resets serial counters back to 0.
+    4. Admin-Gated 'Wipe Data':
+       Protects data reset/wipe behind an Admin Authentication modal
+       requiring valid administrator credentials. All wipe attempts (success or failure)
+       are securely written to an immutable audit log.
     """
-    if user["role"] != "admin":
-        return jsonify(error="Permission denied: Only Administrator can wipe database data."), 403
-
     data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", "")).strip()
     confirmation = str(data.get("confirm", "")).strip().upper()
-    if confirmation != "WIPE":
-        return jsonify(error="Confirmation failed: You must type 'WIPE' to confirm this action."), 400
+    reason = str(data.get("reason", "Administrative Data Reset")).strip()
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1").split(",")[0].strip()
 
     db = connect()
     try:
-        # Delete all tokens
+        # Authenticate admin credentials
+        user = authenticate_user(username, password)
+        if not user or user["role"] != "admin":
+            log_audit(
+                db=db,
+                action="WIPE_DATA_ATTEMPT",
+                user_id=username or "unknown",
+                status="FAILED",
+                details=f"Invalid administrator credentials from IP {client_ip}. Reason given: {reason}",
+                ip_address=client_ip
+            )
+            db.commit()
+            return jsonify(error="Administrator authentication failed: Invalid admin User ID or Password."), 401
+
+        if confirmation != "WIPE":
+            log_audit(
+                db=db,
+                action="WIPE_DATA_ATTEMPT",
+                user_id=user["username"],
+                status="FAILED",
+                details=f"Confirmation mismatch ('{confirmation}' != 'WIPE') from IP {client_ip}.",
+                ip_address=client_ip
+            )
+            db.commit()
+            return jsonify(error="Confirmation failed: You must type 'WIPE' in capital letters."), 400
+
+        # Safety: Take an automatic pre-wipe compressed backup before deleting data
+        try:
+            create_compressed_backup(tag="pre_wipe")
+        except Exception as bkp_err:
+            print(f"[WARN] Pre-wipe automated backup warning: {bkp_err}")
+
+        # Delete all tokens and reset counters
         db.execute("DELETE FROM tokens")
-        # Reset serial counters back to 0
         db.execute("UPDATE counters SET last_no = 0")
+
+        # Write immutable audit log of successful wipe
+        log_audit(
+            db=db,
+            action="WIPE_DATA_SUCCESS",
+            user_id=user["username"],
+            status="SUCCESS",
+            details=f"Database wiped by Admin '{user['name']}'. Reason: {reason}. IP: {client_ip}.",
+            ip_address=client_ip
+        )
         db.commit()
         refresh_excel_file(db)
+
+        return jsonify(
+            success=True,
+            message="Database wiped successfully. All token records have been deleted and serial numbers reset to B00001, S00001, SA00001. A secure audit record has been logged."
+        )
     except Exception as e:
         db.rollback()
         return jsonify(error=f"Failed to wipe database: {str(e)}"), 500
     finally:
         db.close()
-
-    return jsonify(
-        success=True,
-        message="All token records have been wiped and serial numbers have been reset to B00001, S00001, SA00001."
-    )
 
 
 @app.get("/api/system/status")
@@ -1386,6 +2125,7 @@ def index():
 
 
 init_db()
+start_backup_scheduler()
 
 if __name__ == "__main__":
     host = os.environ.get("SVARA_HOST", "0.0.0.0")

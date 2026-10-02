@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tokens_type ON tokens(type_key);
+CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(created_by);
+CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);
+CREATE INDEX IF NOT EXISTS idx_tokens_mobile ON tokens(mobile);
+CREATE INDEX IF NOT EXISTS idx_tokens_serial ON tokens(serial);
 
 -- Active session per user so admin and all 3 counters have independent active logins
 CREATE TABLE IF NOT EXISTS active_sessions (
@@ -42,3 +46,31 @@ CREATE TABLE IF NOT EXISTS active_sessions (
     session_token TEXT NOT NULL,
     logged_in_at  TEXT NOT NULL
 );
+
+-- Reprint audit logs: records each reprint event for tracking
+CREATE TABLE IF NOT EXISTS reprint_logs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_id      INTEGER NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
+    token_serial  TEXT NOT NULL,
+    clerk_id      TEXT NOT NULL,
+    clerk_name    TEXT NOT NULL,
+    reason        TEXT DEFAULT 'Lost or torn receipt',
+    reprinted_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reprint_token ON reprint_logs(token_serial);
+CREATE INDEX IF NOT EXISTS idx_reprint_clerk ON reprint_logs(clerk_id);
+
+-- System and Administrative security audit logs: immutable tracking of wipe attempts, backups, etc.
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    action        TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    ip_address    TEXT,
+    status        TEXT NOT NULL,
+    details       TEXT,
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);

@@ -13,6 +13,7 @@ database/svara.db-journal
 database/svara.db-wal
 database/svara.db-shm
 exports/*.xlsx
+backups/*.sql.gz
 
 # VS Code / IDE
 .vscode/

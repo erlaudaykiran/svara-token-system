@@ -100,11 +100,16 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 .token .cp{font-size:12px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px}
 .token .blessing{font-size:11px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px;line-height:1.35;text-align:center;font-style:italic}
 .cut-spacer{height:10mm}
+.token .reprint-badge{font-size:11px;font-weight:900;letter-spacing:1px;padding:2px 0;margin:3px 0;border-top:1px dashed #000;border-bottom:1px dashed #000;text-align:center}
+.quick-lookup-card{background:#fff;border:1.5px solid var(--line);border-radius:6px;padding:12px;margin-top:8px}
+.quick-lookup-match{background:#fff9eb;border:1px solid var(--gold);border-radius:4px;padding:10px 12px;margin-bottom:8px}
+.booking-item{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:13px;flex-wrap:wrap;gap:6px}
+.booking-item:last-child{border-bottom:none}
 
 @media print{
  @page{size:80mm auto;margin:2mm 0}
  body{background:#fff;margin:0;padding:0}
- header,main,#loginSection,#editModal,#receiptModal,.toast{display:none!important}
+ header,main,#loginSection,#editModal,#receiptModal,#reprintModal,#reportModal,#wipeAuthModal,.toast{display:none!important}
  #printArea{display:block}
  .token{
    width:72mm!important;
@@ -147,6 +152,27 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 </section>
 
 <main id="appView" class="hidden">
+  <!-- 2. Quick Lookup / Search by Mobile Number (Autofocus) -->
+  <section id="quickLookupSection" style="margin-bottom:18px">
+    <div style="background:#fff;border:2px solid var(--line);border-radius:8px;padding:14px 18px;box-shadow:0 2px 6px rgba(0,0,0,.04)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <label for="quickLookupInput" style="margin:0;font-size:15px;color:var(--maroon);font-weight:700;display:flex;align-items:center;gap:6px">
+          <span>🔍 Quick Lookup (Mobile Number)</span>
+        </label>
+        <span style="font-size:12px;color:#7a6858;font-family:Arial,sans-serif">Autofocus &bull; Search bookings, auto-fill, or reprint</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div style="position:relative;flex:1">
+          <input id="quickLookupInput" type="tel" inputmode="numeric" placeholder="Enter devotee 10-digit mobile number or serial (e.g. 9848012345 or B00001)..." autocomplete="off" autofocus style="padding-left:14px;padding-right:36px">
+          <button type="button" id="quickLookupClearBtn" class="hidden" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:20px;color:#888;cursor:pointer;line-height:1">&times;</button>
+        </div>
+        <button type="button" class="p" id="quickLookupSearchBtn" style="flex:0 0 auto;padding:11px 18px;font-size:14px">Search</button>
+      </div>
+      <!-- Live Dropdown / Search Results Box -->
+      <div id="quickLookupResults" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"></div>
+    </div>
+  </section>
+
   <section id="stepChoose">
     <h2>Select Lucky Draw Token Type</h2>
     <div class="choices">
@@ -234,8 +260,11 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <p class="counts" id="counts"></p>
     
     <div class="row">
+      <button class="s" id="reprintTokenModalBtn" style="color:var(--maroon);border-color:var(--maroon);font-weight:700">🔄 Reprint Token</button>
+      <button class="s" id="shiftReportBtn" style="color:var(--gold);border-color:var(--gold);font-weight:700">📊 Shift / Daily Report</button>
       <button class="s" id="xlsBtn">Download Excel</button>
-      <button class="s" id="backupDbBtn" style="color:var(--green);border-color:var(--green);font-weight:700">💾 Backup Database (.db)</button>
+      <button class="s" id="backupGzBtn" style="color:var(--green);border-color:var(--green);font-weight:700">💾 Backup Database (.sql.gz)</button>
+      <button class="s" id="backupDbBtn" style="color:var(--green);border-color:var(--green)">💾 Backup DB (.db)</button>
       <button class="s" id="viewBtn">View Records</button>
       <button class="s hidden" id="adminVoidBtn" style="color:var(--red);border-color:var(--red)">🚫 Void Token</button>
       <button class="s hidden" id="adminEditBtn" style="color:var(--maroon);border-color:var(--maroon)">✏️ Edit Token</button>
@@ -248,6 +277,125 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="tablewrap hidden" id="tableWrap"></div>
   </section>
 </main>
+
+
+<!-- 1. Dedicated Reprint Modal (Search by Serial or Mobile + Audit Logging) -->
+<div id="reprintModal" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:520px">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:18px;color:var(--maroon)">🔄 Reprint Lost or Torn Token</h3>
+      <button type="button" class="modal-close" id="reprintModalClose">&times;</button>
+    </div>
+    <div style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin:10px 0 12px;line-height:1.4">
+      Search for lost, torn, or faded receipts using the <b>Unique Reference ID (Serial)</b> or <b>Devotee Mobile Number</b>. Every reprint is automatically recorded in the audit log.
+    </div>
+    <label for="reprintQuery">Reference ID (Serial) or Mobile Number</label>
+    <div style="display:flex;gap:8px">
+      <input id="reprintQuery" type="text" placeholder="e.g. B00001 or 9848012345" autocomplete="off" style="flex:1">
+      <button type="button" class="p" id="reprintFindBtn" style="flex:0 0 auto;padding:10px 18px">Find Token</button>
+    </div>
+    <label for="reprintReason" style="margin-top:12px">Reprint Reason</label>
+    <select id="reprintReason" style="width:100%;padding:10px 12px;font-size:14px;border:2px solid var(--line);border-radius:4px;background:#fff;font-family:Arial,sans-serif">
+      <option value="Lost or torn receipt">Lost or torn receipt</option>
+      <option value="Thermal paper fade / damaged">Thermal paper fade / damaged</option>
+      <option value="Customer request">Customer request for duplicate copy</option>
+      <option value="Printer jam / error">Printer jam / paper error</option>
+    </select>
+    <div class="err" id="reprintErr"></div>
+    <div id="reprintPreviewArea" class="hidden" style="margin-top:12px;background:#fcf8ee;border:1px solid var(--line);border-radius:6px;padding:12px"></div>
+    <div class="row" style="margin-top:16px">
+      <button type="button" class="p" id="reprintExecuteBtn" disabled>🖨️ Print Clean Duplicate Copy</button>
+      <button type="button" class="s" id="reprintCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- 3. Inventory Breakdown & Grand Totals Report Modal -->
+<div id="reportModal" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:700px;width:95%">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:20px;color:var(--maroon)">📊 Inventory Breakdown &amp; Grand Totals Report</h3>
+      <button type="button" class="modal-close" id="reportModalClose">&times;</button>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-end;margin:12px 0 14px;flex-wrap:wrap;font-family:Arial,sans-serif;font-size:13px">
+      <div>
+        <label style="margin:0 0 4px;font-size:12px;color:#6b5a4a">Filter Date:</label>
+        <select id="reportDateSelect" style="padding:7px 10px;border:1px solid var(--line);border-radius:4px">
+          <option value="today">Today</option>
+          <option value="all">All Dates (Cumulative)</option>
+        </select>
+      </div>
+      <div id="reportCounterFilterWrap" class="hidden">
+        <label style="margin:0 0 4px;font-size:12px;color:#6b5a4a">Counter:</label>
+        <select id="reportCounterSelect" style="padding:7px 10px;border:1px solid var(--line);border-radius:4px">
+          <option value="all">All Counters (Combined)</option>
+          <option value="counter1">Counter 1</option>
+          <option value="counter2">Counter 2</option>
+          <option value="counter3">Counter 3</option>
+          <option value="admin">Admin / Main</option>
+        </select>
+      </div>
+      <button type="button" class="s" id="reportRefreshBtn" style="padding:7px 14px;font-size:13px">🔄 Refresh</button>
+    </div>
+
+    <!-- KPI Summary Cards -->
+    <div class="admin-summary" id="reportKpiCards" style="margin-bottom:14px"></div>
+
+    <!-- Itemized Category Breakdown Table -->
+    <div style="overflow-x:auto;max-height:280px;border:1px solid var(--line);border-radius:4px">
+      <table id="reportTable" style="margin:0">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Unit Price</th>
+            <th>Active</th>
+            <th>Void</th>
+            <th>Total Issued</th>
+            <th>Cash (₹)</th>
+            <th>UPI (₹)</th>
+            <th>Total Collection</th>
+          </tr>
+        </thead>
+        <tbody id="reportTableBody"></tbody>
+        <tfoot id="reportTableFoot" style="font-weight:700;background:#efe3c6;color:var(--maroon)"></tfoot>
+      </table>
+    </div>
+
+    <div id="reportMetadata" style="font-family:Arial,sans-serif;font-size:11px;color:#6b5a4a;margin-top:10px"></div>
+
+    <div class="row" style="margin-top:16px">
+      <button type="button" class="p" id="printReportBtn">🖨️ Print Shift Report</button>
+      <button type="button" class="s" id="reportDoneBtn">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- 4. Admin-Gated Wipe Data Modal (Credentials + Audit Log) -->
+<div id="wipeAuthModal" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:480px;border-color:var(--red)">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:18px;color:var(--red)">⚠️ Admin Authentication Required</h3>
+      <button type="button" class="modal-close" id="wipeAuthModalClose">&times;</button>
+    </div>
+    <div style="background:#ffebee;border:1px solid #ffcdd2;border-radius:6px;padding:10px 12px;margin:12px 0;font-family:Arial,sans-serif;font-size:13px;color:#b00020;line-height:1.4">
+      <b>CRITICAL SECURITY WARNING:</b> You are attempting to permanently wipe all token records and reset serial counters.
+      <br>All wipe attempts (both success and failure) are recorded in an <b>immutable audit log</b>.
+    </div>
+    <label for="wipeAdminUser">Administrator User ID</label>
+    <input id="wipeAdminUser" type="text" autocomplete="username" placeholder="admin" value="admin">
+    <label for="wipeAdminPass">Administrator Password</label>
+    <input id="wipeAdminPass" type="password" autocomplete="current-password" placeholder="Enter administrator password">
+    <label for="wipeConfirmWord">Confirmation Word (Type WIPE in capital letters)</label>
+    <input id="wipeConfirmWord" type="text" autocomplete="off" placeholder="WIPE">
+    <label for="wipeReason">Reason for Reset</label>
+    <input id="wipeReason" type="text" autocomplete="off" placeholder="e.g. Festival 2026 pre-event testing reset">
+    <div class="err" id="wipeErr"></div>
+    <div class="row" style="margin-top:16px">
+      <button type="button" class="p" id="wipeConfirmSubmitBtn" style="background:var(--red);border-color:var(--red)">🗑️ Confirm &amp; Permanently Wipe Data</button>
+      <button type="button" class="s" id="wipeCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- Admin Edit Modal Dialog -->
 <div id="editModal" class="modal-overlay hidden">
@@ -608,7 +756,9 @@ function tokenHTML(t, copy){
   var hasPrice = (t.price && Number(t.price) > 0);
   var priceHeader = hasPrice ? (' &mdash; ₹' + t.price) : '';
   var priceDetail = hasPrice ? ('<b>Price: ₹' + t.price + '</b><br>') : '';
+  var reprintBadge = t.is_reprint ? '<div class="reprint-badge">*** REPRINT / DUPLICATE COPY ***</div>' : '';
   return '<div class="token">' +
+    reprintBadge +
     '<div class="token-header">' +
       '<img src="/logo.jpg" class="token-logo" alt="Logo">' +
       '<div class="token-header-text">' +
@@ -813,7 +963,8 @@ function renderTable(){
         '<td>';
 
       if(!isVoid){
-        h += '<button class="action-btn" style="background:#25D366;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700" onclick="resendReceipt(\'' + esc(x.serial) + '\')">📱 WhatsApp</button>';
+        h += '<button class="action-btn" style="background:#25D366;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700" onclick="resendReceipt(\'' + esc(x.serial) + '\')">📱 WhatsApp</button>' +
+             '<button class="action-btn" style="background:var(--maroon);color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="triggerReprint(\'' + esc(x.serial) + '\')">🖨️ Reprint</button>';
       }
 
       if(isAdmin){
@@ -1009,39 +1160,449 @@ document.getElementById('importFileInput').onchange = function(){
   });
 };
 
+/* =========================================================
+   1. REPRINT TOKEN IMPLEMENTATION (WITH AUDIT LOGGING)
+   ========================================================= */
+
+function triggerReprint(query, reason){
+  if(!query) return;
+  reason = reason || 'Lost or torn receipt';
+  api('/api/tokens/reprint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: query, reason: reason })
+  })
+  .then(function(res){
+    if(res.multiple_matches){
+      var h = '<div style="font-weight:700;color:var(--maroon);margin-bottom:8px">' + esc(res.message) + '</div>';
+      res.tokens.forEach(function(t){
+        h += '<div class="booking-item">' +
+             '<span><b>' + esc(t.serial) + '</b> (' + esc(t.type) + ' - ₹' + t.price + ') &bull; ' + esc(t.date) + '</span>' +
+             '<button type="button" class="action-btn" style="background:var(--maroon);color:#fff;border:none;padding:3px 8px;cursor:pointer" onclick="triggerReprint(\'' + esc(t.serial) + '\')">Reprint This</button>' +
+             '</div>';
+      });
+      var prevArea = document.getElementById('reprintPreviewArea');
+      if(prevArea){
+        prevArea.innerHTML = h;
+        prevArea.classList.remove('hidden');
+      }
+      return;
+    }
+
+    var t = res.token;
+    var printHtml = tokenHTML(t, 'Customer copy') + tokenHTML(t, 'Office copy');
+    document.getElementById('printArea').innerHTML = printHtml;
+    showToast('🖨️ Clean Reprint generated for Token ' + t.serial + ' (Logged to Audit)');
+    closeReprintModal();
+    setTimeout(function(){ window.print(); }, 120);
+  })
+  .catch(function(e){
+    alert('Reprint error: ' + e.message);
+  });
+}
+
+function openReprintModal(){
+  document.getElementById('reprintQuery').value = '';
+  document.getElementById('reprintErr').textContent = '';
+  document.getElementById('reprintPreviewArea').innerHTML = '';
+  document.getElementById('reprintPreviewArea').classList.add('hidden');
+  document.getElementById('reprintExecuteBtn').disabled = true;
+  document.getElementById('reprintModal').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('reprintQuery').focus(); }, 100);
+}
+
+function closeReprintModal(){
+  document.getElementById('reprintModal').classList.add('hidden');
+}
+
+document.getElementById('reprintTokenModalBtn').onclick = openReprintModal;
+document.getElementById('reprintModalClose').onclick = closeReprintModal;
+document.getElementById('reprintCancelBtn').onclick = closeReprintModal;
+
+var activeReprintToken = null;
+
+document.getElementById('reprintFindBtn').onclick = function(){
+  var q = document.getElementById('reprintQuery').value.trim();
+  var err = document.getElementById('reprintErr');
+  var prev = document.getElementById('reprintPreviewArea');
+  var execBtn = document.getElementById('reprintExecuteBtn');
+  if(!q){
+    err.textContent = 'Please enter a serial or mobile number.';
+    return;
+  }
+  err.textContent = '';
+  this.disabled = true;
+  this.textContent = 'Searching...';
+  var btn = this;
+
+  api('/api/devotees/search?q=' + encodeURIComponent(q))
+    .then(function(res){
+      if(!res.results || !res.results.length){
+        err.textContent = 'No token record found matching "' + q + '".';
+        prev.classList.add('hidden');
+        execBtn.disabled = true;
+        activeReprintToken = null;
+        return;
+      }
+      if(res.results.length === 1){
+        activeReprintToken = res.results[0];
+        prev.innerHTML = '<div style="font-size:14px;color:var(--maroon);font-weight:700">Token Found: ' + esc(activeReprintToken.serial) + ' (' + esc(activeReprintToken.type) + ')</div>' +
+          '<div style="font-size:13px;margin-top:4px">Devotee: <b>' + esc(activeReprintToken.name) + '</b> (' + esc(activeReprintToken.mobile) + ')</div>' +
+          '<div style="font-size:12px;color:#6b5a4a;margin-top:2px">Issued: ' + esc(activeReprintToken.date) + ' ' + esc(activeReprintToken.time) + ' &bull; ' + esc(activeReprintToken.counter_name) + '</div>';
+        prev.classList.remove('hidden');
+        execBtn.disabled = false;
+      } else {
+        var h = '<div style="font-weight:700;color:var(--maroon);margin-bottom:6px">Multiple Tokens Found (' + res.results.length + '):</div>';
+        res.results.forEach(function(t){
+          h += '<div class="booking-item">' +
+               '<span><b>' + esc(t.serial) + '</b> - ' + esc(t.type) + ' (₹' + t.price + ') &bull; ' + esc(t.name) + ' &bull; ' + esc(t.date) + '</span>' +
+               '<button type="button" class="action-btn" style="background:var(--maroon);color:#fff;border:none;padding:4px 8px;cursor:pointer" onclick="selectReprintToken(\'' + esc(t.serial) + '\')">Select</button>' +
+               '</div>';
+        });
+        prev.innerHTML = h;
+        prev.classList.remove('hidden');
+        execBtn.disabled = true;
+      }
+    })
+    .catch(function(e){
+      err.textContent = e.message;
+    })
+    .then(function(){
+      btn.disabled = false;
+      btn.textContent = 'Find Token';
+    });
+};
+
+function selectReprintToken(serial){
+  document.getElementById('reprintQuery').value = serial;
+  document.getElementById('reprintFindBtn').click();
+}
+
+document.getElementById('reprintExecuteBtn').onclick = function(){
+  if(!activeReprintToken) return;
+  var reason = document.getElementById('reprintReason').value;
+  triggerReprint(activeReprintToken.serial, reason);
+};
+
+
+/* =========================================================
+   2. QUICK LOOKUP / SEARCH BY MOBILE NUMBER (AUTOFOCUS)
+   ========================================================= */
+
+var quickLookupTimer = null;
+
+function doQuickLookup(q){
+  var resBox = document.getElementById('quickLookupResults');
+  var clearBtn = document.getElementById('quickLookupClearBtn');
+  q = (q || '').trim();
+
+  if(!q){
+    resBox.classList.add('hidden');
+    resBox.innerHTML = '';
+    clearBtn.classList.add('hidden');
+    return;
+  }
+  clearBtn.classList.remove('hidden');
+
+  api('/api/devotees/search?q=' + encodeURIComponent(q))
+    .then(function(res){
+      if(!res.results || !res.results.length){
+        resBox.innerHTML = '<div style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;padding:6px 0">No previous bookings found for "<b>' + esc(q) + '</b>". Devotee is ready for new registration.</div>';
+        resBox.classList.remove('hidden');
+        return;
+      }
+
+      var h = '<div class="quick-lookup-card">';
+      if(res.devotee){
+        h += '<div class="quick-lookup-match">' +
+             '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+               '<div>' +
+                 '<span style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px">Devotee Record Found</span>' +
+                 '<div style="font-size:16px;font-weight:700;color:var(--maroon)">' + esc(res.devotee.name) + ' (' + esc(res.devotee.mobile) + ')</div>' +
+                 '<div style="font-size:12px;color:#6b5a4a">' + res.devotee.total_bookings + ' total booking(s) &bull; Last Token: ' + esc(res.devotee.last_serial) + ' (' + esc(res.devotee.last_type) + ')</div>' +
+               '</div>' +
+               '<button type="button" class="p" style="padding:6px 14px;font-size:12px;flex:0 0 auto" onclick="autoFillDevotee(\'' + esc(res.devotee.name) + '\',\'' + esc(res.devotee.mobile) + '\')">⚡ Auto-fill for New Token</button>' +
+             '</div>' +
+           '</div>';
+      }
+
+      h += '<div style="font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:var(--ink);margin:8px 0 4px">Recent Bookings (' + res.results.length + '):</div>';
+      res.results.slice(0, 5).forEach(function(t){
+        var isVoid = (t.status === 'VOID');
+        var statusBadge = isVoid ? '<span class="badge-void" style="margin-left:4px">VOID</span>' : '';
+        h += '<div class="booking-item">' +
+             '<div>' +
+               '<b>' + esc(t.serial) + '</b> &bull; ' + esc(t.type) + ' (₹' + t.price + ')' + statusBadge + '<br>' +
+               '<span style="font-size:12px;color:#6b5a4a">' + esc(t.date) + ' ' + esc(t.time) + ' &bull; ' + esc(t.counter_name) + ' &bull; ' + esc(t.payment) + '</span>' +
+             '</div>' +
+             '<div style="display:flex;gap:4px">' +
+               '<button type="button" class="action-btn" style="background:#7a1424;color:#fff;border:none;padding:4px 8px;cursor:pointer" onclick="triggerReprint(\'' + esc(t.serial) + '\')">🖨️ Reprint</button>' +
+               '<button type="button" class="action-btn" style="background:#25D366;color:#fff;border:none;padding:4px 8px;cursor:pointer" onclick="resendReceipt(\'' + esc(t.serial) + '\')">📱 WhatsApp</button>' +
+             '</div>' +
+             '</div>';
+      });
+      h += '</div>';
+
+      resBox.innerHTML = h;
+      resBox.classList.remove('hidden');
+    })
+    .catch(function(e){
+      resBox.innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+      resBox.classList.remove('hidden');
+    });
+}
+
+function autoFillDevotee(name, mobile){
+  document.getElementById('name').value = name || '';
+  document.getElementById('mobile').value = mobile || '';
+  showToast('⚡ Auto-filled devotee: ' + esc(name) + ' (' + esc(mobile) + ')');
+
+  if(current){
+    document.getElementById('quantity').focus();
+  } else {
+    var chooseSection = document.getElementById('stepChoose');
+    if(chooseSection) chooseSection.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+document.getElementById('quickLookupInput').oninput = function(){
+  clearTimeout(quickLookupTimer);
+  var val = this.value;
+  quickLookupTimer = setTimeout(function(){ doQuickLookup(val); }, 250);
+};
+
+document.getElementById('quickLookupInput').onkeydown = function(e){
+  if(e.key === 'Enter'){
+    clearTimeout(quickLookupTimer);
+    doQuickLookup(this.value);
+  }
+};
+
+document.getElementById('quickLookupSearchBtn').onclick = function(){
+  clearTimeout(quickLookupTimer);
+  doQuickLookup(document.getElementById('quickLookupInput').value);
+};
+
+document.getElementById('quickLookupClearBtn').onclick = function(){
+  document.getElementById('quickLookupInput').value = '';
+  document.getElementById('quickLookupResults').classList.add('hidden');
+  document.getElementById('quickLookupResults').innerHTML = '';
+  this.classList.add('hidden');
+  document.getElementById('quickLookupInput').focus();
+};
+
+
+/* =========================================================
+   3. INVENTORY BREAKDOWN & GRAND TOTALS REPORT
+   ========================================================= */
+
+var currentReportData = null;
+
+function loadShiftReport(){
+  var dateVal = document.getElementById('reportDateSelect').value;
+  var counterVal = document.getElementById('reportCounterSelect') ? document.getElementById('reportCounterSelect').value : 'all';
+
+  var url = '/api/reports/shift?date=' + encodeURIComponent(dateVal) + '&counter=' + encodeURIComponent(counterVal);
+  api(url)
+    .then(function(rep){
+      currentReportData = rep;
+      renderShiftReport(rep);
+      document.getElementById('reportModal').classList.remove('hidden');
+    })
+    .catch(function(e){
+      alert('Failed to load shift report: ' + e.message);
+    });
+}
+
+function renderShiftReport(rep){
+  var gt = rep.grand_totals || {};
+
+  var kpiHtml = '' +
+    '<div class="summary-card"><b>Total Revenue</b><span style="font-size:20px;font-weight:700;color:var(--maroon)">₹' + (gt.total_amount || 0).toLocaleString('en-IN') + '</span></div>' +
+    '<div class="summary-card"><b>Active Tokens</b><span style="font-size:20px;font-weight:700;color:var(--green)">' + (gt.active_count || 0) + '</span></div>' +
+    '<div class="summary-card"><b>Void Tokens</b><span style="font-size:20px;font-weight:700;color:var(--red)">' + (gt.void_count || 0) + '</span></div>' +
+    '<div class="summary-card"><b>Cash Collection</b><span style="font-size:18px;font-weight:700">₹' + (gt.cash_amount || 0).toLocaleString('en-IN') + '</span></div>' +
+    '<div class="summary-card"><b>UPI Collection</b><span style="font-size:18px;font-weight:700">₹' + (gt.upi_amount || 0).toLocaleString('en-IN') + '</span></div>';
+  document.getElementById('reportKpiCards').innerHTML = kpiHtml;
+
+  var bodyHtml = '';
+  (rep.categories || []).forEach(function(c){
+    bodyHtml += '<tr>' +
+      '<td><b>' + esc(c.label) + '</b> (' + esc(c.prefix) + ')</td>' +
+      '<td>' + (c.unit_price > 0 ? ('₹' + c.unit_price) : 'Free') + '</td>' +
+      '<td><b style="color:var(--green)">' + c.active_count + '</b></td>' +
+      '<td>' + (c.void_count ? ('<span style="color:var(--red)">' + c.void_count + '</span>') : '0') + '</td>' +
+      '<td>' + c.total_count + '</td>' +
+      '<td>₹' + c.cash_amount.toLocaleString('en-IN') + '</td>' +
+      '<td>₹' + c.upi_amount.toLocaleString('en-IN') + '</td>' +
+      '<td><b>₹' + c.total_amount.toLocaleString('en-IN') + '</b></td>' +
+      '</tr>';
+  });
+  document.getElementById('reportTableBody').innerHTML = bodyHtml;
+
+  var footHtml = '<tr>' +
+    '<td><b>GRAND TOTALS</b></td>' +
+    '<td>-</td>' +
+    '<td><b>' + (gt.active_count || 0) + '</b></td>' +
+    '<td><b>' + (gt.void_count || 0) + '</b></td>' +
+    '<td><b>' + (gt.total_count || 0) + '</b></td>' +
+    '<td><b>₹' + (gt.cash_amount || 0).toLocaleString('en-IN') + '</b></td>' +
+    '<td><b>₹' + (gt.upi_amount || 0).toLocaleString('en-IN') + '</b></td>' +
+    '<td><b style="font-size:15px;color:var(--maroon)">₹' + (gt.total_amount || 0).toLocaleString('en-IN') + '</b></td>' +
+    '</tr>';
+  document.getElementById('reportTableFoot').innerHTML = footHtml;
+
+  document.getElementById('reportMetadata').innerHTML =
+    'Report Date: <b>' + esc(rep.report_date) + '</b> &bull; Scope: <b>' + esc(rep.counter) + '</b> &bull; Generated By: <b>' + esc(rep.generated_by) + '</b> at ' + esc(rep.generated_at);
+
+  if(currentUser && currentUser.role === 'admin'){
+    document.getElementById('reportCounterFilterWrap').classList.remove('hidden');
+  } else {
+    document.getElementById('reportCounterFilterWrap').classList.add('hidden');
+  }
+}
+
+document.getElementById('shiftReportBtn').onclick = loadShiftReport;
+document.getElementById('reportRefreshBtn').onclick = loadShiftReport;
+document.getElementById('reportDateSelect').onchange = loadShiftReport;
+if(document.getElementById('reportCounterSelect')){
+  document.getElementById('reportCounterSelect').onchange = loadShiftReport;
+}
+document.getElementById('reportModalClose').onclick = function(){ document.getElementById('reportModal').classList.add('hidden'); };
+document.getElementById('reportDoneBtn').onclick = function(){ document.getElementById('reportModal').classList.add('hidden'); };
+
+document.getElementById('printReportBtn').onclick = function(){
+  if(!currentReportData) return;
+  var rep = currentReportData;
+  var gt = rep.grand_totals || {};
+
+  var html = '<div class="token" style="width:74mm;text-align:left;font-size:12px;padding:4mm 3mm">' +
+    '<div style="text-align:center;font-weight:700;font-size:16px;color:#000">SVARA 2026 LUCKY DRAW</div>' +
+    '<div style="text-align:center;font-weight:700;font-size:13px;border-bottom:1px solid #000;padding-bottom:3px;margin-bottom:6px">END-OF-SHIFT REPORT</div>' +
+    '<div>Date: <b>' + esc(rep.report_date) + '</b></div>' +
+    '<div>Counter: <b>' + esc(rep.counter) + '</b></div>' +
+    '<div>Generated: ' + esc(rep.generated_at) + '</div>' +
+    '<div>Clerk: ' + esc(rep.generated_by) + '</div>' +
+    '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">' +
+    '<div style="font-weight:700;margin-bottom:4px">ITEMIZED INVENTORY:</div>';
+
+  (rep.categories || []).forEach(function(c){
+    html += '<div style="margin-bottom:4px">' +
+      '<b>' + esc(c.label) + ' (' + esc(c.prefix) + '):</b><br>' +
+      '  Active: ' + c.active_count + (c.void_count ? ' (' + c.void_count + ' void)' : '') + ' &bull; Total: ₹' + c.total_amount.toLocaleString('en-IN') + '<br>' +
+      '  Cash: ₹' + c.cash_amount.toLocaleString('en-IN') + ' | UPI: ₹' + c.upi_amount.toLocaleString('en-IN') +
+      '</div>';
+  });
+
+  html += '<hr style="border:none;border-top:1px solid #000;margin:6px 0">' +
+    '<div style="font-size:14px;font-weight:700">GRAND TOTALS:</div>' +
+    '<div>Active Tokens: <b>' + (gt.active_count || 0) + '</b></div>' +
+    '<div>Void Tokens: <b>' + (gt.void_count || 0) + '</b></div>' +
+    '<div>Cash Collection: <b>₹' + (gt.cash_amount || 0).toLocaleString('en-IN') + '</b></div>' +
+    '<div>UPI Collection: <b>₹' + (gt.upi_amount || 0).toLocaleString('en-IN') + '</b></div>' +
+    '<div style="font-size:15px;margin-top:4px">TOTAL REVENUE: <b>₹' + (gt.total_amount || 0).toLocaleString('en-IN') + '</b></div>' +
+    '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">' +
+    '<div style="text-align:center;font-size:10px;margin-top:6px">*** END OF OFFICIAL REPORT ***</div>' +
+    '</div>';
+
+  document.getElementById('printArea').innerHTML = html;
+  setTimeout(function(){ window.print(); }, 120);
+};
+
+
+/* =========================================================
+   4. COMPRESSED BACKUP (.sql.gz) & ADMIN-GATED WIPE DATA
+   ========================================================= */
+
+document.getElementById('backupGzBtn').onclick = function(){
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = '⏳ Creating Backup...';
+
+  api('/api/backup/create', { method: 'POST' })
+    .then(function(res){
+      showToast('💾 Compressed backup created: ' + res.filename + ' (' + res.size_kb + ' KB)');
+      window.location.href = '/api/backup/download-latest';
+    })
+    .catch(function(e){
+      alert('Backup failed: ' + e.message);
+    })
+    .then(function(){
+      btn.disabled = false;
+      btn.textContent = '💾 Backup Database (.sql.gz)';
+    });
+};
+
+// Admin-Gated Wipe Data
 document.getElementById('adminWipeBtn').onclick = function(){
   if(!currentUser || currentUser.role !== 'admin'){
     alert('Permission denied: Only Administrator can wipe database data.');
     return;
   }
-  var step1 = confirm('⚠️ CRITICAL WARNING: You are about to permanently delete ALL token records and reset all serial numbers back to B00001, S00001, SA00001!\n\nThis action CANNOT be undone.\n\nAre you sure you want to wipe the database?');
-  if(!step1) return;
+  document.getElementById('wipeAdminUser').value = currentUser.username || 'admin';
+  document.getElementById('wipeAdminPass').value = '';
+  document.getElementById('wipeConfirmWord').value = '';
+  document.getElementById('wipeReason').value = '';
+  document.getElementById('wipeErr').textContent = '';
+  document.getElementById('wipeAuthModal').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('wipeAdminPass').focus(); }, 100);
+};
 
-  var step2 = prompt('To confirm permanent deletion, type WIPE in capital letters:');
-  if(!step2 || step2.trim().toUpperCase() !== 'WIPE'){
-    alert('Wipe cancelled. Verification word did not match.');
+document.getElementById('wipeAuthModalClose').onclick = function(){
+  document.getElementById('wipeAuthModal').classList.add('hidden');
+};
+document.getElementById('wipeCancelBtn').onclick = function(){
+  document.getElementById('wipeAuthModal').classList.add('hidden');
+};
+
+document.getElementById('wipeConfirmSubmitBtn').onclick = function(){
+  var u = document.getElementById('wipeAdminUser').value.trim();
+  var p = document.getElementById('wipeAdminPass').value.trim();
+  var c = document.getElementById('wipeConfirmWord').value.trim().toUpperCase();
+  var r = document.getElementById('wipeReason').value.trim();
+  var err = document.getElementById('wipeErr');
+
+  if(!u || !p){
+    err.textContent = 'Please enter administrator username and password.';
     return;
   }
+  if(c !== 'WIPE'){
+    err.textContent = 'Confirmation word must be WIPE in capital letters.';
+    return;
+  }
+  err.textContent = '';
 
   var btn = this;
   btn.disabled = true;
-  btn.textContent = '⏳ Wiping Database...';
+  btn.textContent = '⏳ Authenticating & Wiping...';
 
-  api('/api/admin/wipe', {
+  fetch('/api/admin/wipe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ confirm: 'WIPE' })
+    body: JSON.stringify({
+      username: u,
+      password: p,
+      confirm: c,
+      reason: r || 'Manual Administrative Reset'
+    })
+  })
+  .then(function(res){
+    return res.json().catch(function(){ return {}; }).then(function(j){
+      if(!res.ok) throw new Error(j.error || 'Wipe failed');
+      return j;
+    });
   })
   .then(function(res){
     alert('✅ ' + (res.message || 'Database wiped successfully!'));
+    document.getElementById('wipeAuthModal').classList.add('hidden');
     refresh();
   })
   .catch(function(e){
-    alert('Error wiping database: ' + e.message);
+    err.textContent = e.message;
   })
   .then(function(){
     btn.disabled = false;
-    btn.textContent = '🗑️ Wipe Database';
+    btn.textContent = '🗑️ Confirm & Permanently Wipe Data';
   });
 };
 
