@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS reprint_logs (
     clerk_id      TEXT NOT NULL,
     clerk_name    TEXT NOT NULL,
     reason        TEXT DEFAULT 'Lost or torn receipt',
-    reprinted_at  TEXT NOT NULL
+    reprinted_at  TEXT NOT NULL,
+    timestamp     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_reprint_token ON reprint_logs(token_serial);

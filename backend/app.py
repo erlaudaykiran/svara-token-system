@@ -10,6 +10,7 @@ Multi-User Counter Management & Secure Token Generation:
   - Automated Save: Tokens are saved atomically upon generation
   - Dynamic Pricing: Royal Enfield ₹301, Silver ₹201, Saree ₹101
 """
+import base64
 import glob
 import gzip
 import io
@@ -71,6 +72,10 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+if BASE not in sys.path:
+    sys.path.insert(0, BASE)
+import escpos
+
 ROOT = os.path.dirname(BASE)
 DB_PATH = os.environ.get("SVARA_DB", os.path.join(ROOT, "database", "svara.db"))
 FRONTEND = os.path.join(ROOT, "frontend")
@@ -249,11 +254,17 @@ def init_db():
                     clerk_id      VARCHAR(50) NOT NULL,
                     clerk_name    VARCHAR(100) NOT NULL,
                     reason        TEXT DEFAULT 'Lost or torn receipt',
-                    reprinted_at  VARCHAR(40) NOT NULL
+                    reprinted_at  VARCHAR(40) NOT NULL,
+                    timestamp     VARCHAR(40) NOT NULL DEFAULT ''
                 );
             """)
+            try:
+                db.execute("ALTER TABLE reprint_logs ADD COLUMN IF NOT EXISTS timestamp VARCHAR(40) NOT NULL DEFAULT '';")
+            except Exception:
+                pass
             db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_token ON reprint_logs(token_serial);")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_clerk ON reprint_logs(clerk_id);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_time ON reprint_logs(timestamp);")
 
             # System & Admin Security Audit Logs (Wipe attempts, backups, security events)
             db.execute("""
@@ -317,11 +328,18 @@ def init_db():
                     clerk_id      TEXT NOT NULL,
                     clerk_name    TEXT NOT NULL,
                     reason        TEXT DEFAULT 'Lost or torn receipt',
-                    reprinted_at  TEXT NOT NULL
+                    reprinted_at  TEXT NOT NULL,
+                    timestamp     TEXT NOT NULL DEFAULT ''
                 )
             """)
+            cur_rp = db.execute("PRAGMA table_info(reprint_logs)")
+            rp_cols = [r["name"] for r in cur_rp.fetchall()]
+            if "timestamp" not in rp_cols:
+                db.execute("ALTER TABLE reprint_logs ADD COLUMN timestamp TEXT NOT NULL DEFAULT ''")
+                db.execute("UPDATE reprint_logs SET timestamp = reprinted_at WHERE timestamp = ''")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_token ON reprint_logs(token_serial)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_clerk ON reprint_logs(clerk_id)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_reprint_time ON reprint_logs(timestamp)")
 
             # SQLite Audit Logs Table
             db.execute("""
@@ -486,12 +504,13 @@ def row_val(r, key, default=None):
 def log_reprint(db, token_id, token_serial, clerk_id, clerk_name, reason="Lost or torn receipt"):
     """
     Middleware/audit function to log every token reprint event.
+    Records token_id, token_serial, clerk_id, clerk_name, reason, and timestamp.
     """
     now_iso = datetime.now().isoformat()
     try:
         db.execute(
-            "INSERT INTO reprint_logs (token_id, token_serial, clerk_id, clerk_name, reason, reprinted_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (token_id, token_serial, clerk_id, clerk_name, reason, now_iso)
+            "INSERT INTO reprint_logs (token_id, token_serial, clerk_id, clerk_name, reason, reprinted_at, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (token_id, token_serial, clerk_id, clerk_name, reason, now_iso, now_iso)
         )
     except Exception as e:
         print(f"[WARN] Failed to write reprint log: {e}")
@@ -628,9 +647,10 @@ def create_compressed_backup(tag="manual"):
                     cnm = str(r["clerk_name"]).replace("'", "''")
                     rsn = str(row_val(r, "reason", "")).replace("'", "''")
                     rat = str(r["reprinted_at"]).replace("'", "''")
+                    ts = str(row_val(r, "timestamp", rat)).replace("'", "''")
                     sql_lines.append(
-                        f"INSERT INTO reprint_logs (token_id, token_serial, clerk_id, clerk_name, reason, reprinted_at) "
-                        f"VALUES ({tid}, '{tser}', '{cid}', '{cnm}', '{rsn}', '{rat}');"
+                        f"INSERT INTO reprint_logs (token_id, token_serial, clerk_id, clerk_name, reason, reprinted_at, timestamp) "
+                        f"VALUES ({tid}, '{tser}', '{cid}', '{cnm}', '{rsn}', '{rat}', '{ts}');"
                     )
         except Exception:
             pass
@@ -1205,6 +1225,14 @@ def create_token(user):
             "mobile": mobile
         }
 
+    # Generate ESC/POS byte stream with Auto-Cutter for 80mm thermal receipt printer (Customer & Office copies)
+    raw_escpos_all = bytearray()
+    for t in created_tokens:
+        raw_escpos_all.extend(escpos.generate_escpos_stream_for_token(t, include_office_copy=True, is_reprint=False))
+    escpos_bytes = bytes(raw_escpos_all)
+    escpos_b64 = base64.b64encode(escpos_bytes).decode("ascii")
+    escpos_text = "\n\n".join([escpos.generate_receipt_text(t) for t in created_tokens])
+
     res = {
         "tokens": created_tokens,
         "count": len(created_tokens),
@@ -1223,7 +1251,9 @@ def create_token(user):
         "date": created_tokens[0]["date"],
         "time": created_tokens[0]["time"],
         "digital_receipt": digital_receipt_data,
-        "thank_you_message": THANK_YOU_MESSAGE
+        "thank_you_message": THANK_YOU_MESSAGE,
+        "escpos_base64": escpos_b64,
+        "escpos_text": escpos_text
     }
     return jsonify(res), 201
 
@@ -1374,7 +1404,10 @@ def reprint_token(user):
         if not matched_token:
             return jsonify(error=f"No token record found matching '{query}'."), 404
 
-        # Audit Logging: Record reprint event
+        # Audit Logging: Record reprint event (token_id, clerk_id, timestamp)
+        now_dt = datetime.now()
+        now_iso = now_dt.isoformat()
+        reprinted_human = now_dt.strftime("%d/%m/%Y %I:%M:%S %p")
         log_reprint(
             db=db,
             token_id=matched_token["id"],
@@ -1388,14 +1421,24 @@ def reprint_token(user):
         # Add reprint flag and metadata
         matched_token["is_reprint"] = True
         matched_token["reprint_reason"] = reason
+        matched_token["reprinted_at"] = reprinted_human
+        matched_token["timestamp"] = now_iso
+
+        # Format receipt using raw ESC/POS commands with Auto-Cutter for 80mm thermal printer
+        escpos_bytes = escpos.generate_escpos_stream_for_token(matched_token, include_office_copy=True, is_reprint=True)
+        escpos_b64 = base64.b64encode(escpos_bytes).decode("ascii")
+        escpos_text = escpos.generate_receipt_text(matched_token, is_reprint=True)
 
         return jsonify(
             success=True,
             reprint=True,
             token=matched_token,
-            reprinted_at=datetime.now().strftime("%d/%m/%Y %I:%M:%S %p"),
+            reprinted_at=reprinted_human,
+            timestamp=now_iso,
             clerk_id=user["username"],
             clerk_name=user["name"],
+            escpos_base64=escpos_b64,
+            escpos_text=escpos_text,
             message=f"Clean reprint generated for Token {matched_token['serial']}."
         )
     finally:
@@ -1406,7 +1449,7 @@ def reprint_token(user):
 @require_auth
 def get_reprint_logs(user):
     """
-    Returns recent reprint audit logs.
+    Returns recent reprint audit logs including token_id, clerk_id, and timestamp.
     """
     limit = int(request.args.get("limit", 50))
     db = connect()
@@ -1417,6 +1460,8 @@ def get_reprint_logs(user):
         ).fetchall()
         logs = []
         for r in rows:
+            rat = row_val(r, "reprinted_at", "")
+            ts = row_val(r, "timestamp", rat)
             logs.append({
                 "id": r["id"],
                 "token_id": r["token_id"],
@@ -1424,11 +1469,151 @@ def get_reprint_logs(user):
                 "clerk_id": r["clerk_id"],
                 "clerk_name": r["clerk_name"],
                 "reason": row_val(r, "reason", ""),
-                "reprinted_at": r["reprinted_at"]
+                "timestamp": ts,
+                "reprinted_at": rat
             })
         return jsonify(logs=logs, count=len(logs))
     finally:
         db.close()
+
+
+@app.get("/api/tokens/<id_or_serial>/escpos")
+@require_auth
+def get_token_escpos(user, id_or_serial):
+    """
+    Generates and returns raw ESC/POS commands formatted for an 80mm thermal receipt printer (48 chars/line).
+    Appends the standard paper cut command at the end of the stream to trigger the auto-cutter.
+    Supports format=download (.bin), format=text (48-char plain text), or JSON (base64).
+    """
+    target = str(id_or_serial).strip()
+    is_reprint = request.args.get("reprint", "false").lower() in ("true", "1", "yes")
+    reason = request.args.get("reason", "Lost or torn receipt")
+    fmt = request.args.get("format", "json").lower()
+
+    db = connect()
+    try:
+        if target.isdigit():
+            row = db.execute("SELECT * FROM tokens WHERE id = ?", (int(target),)).fetchone()
+        else:
+            row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (target.upper(),)).fetchone()
+        if not row:
+            return jsonify(error=f"Token '{target}' not found."), 404
+
+        t = token_json(row)
+        if is_reprint:
+            t["is_reprint"] = True
+            t["reprint_reason"] = reason
+            t["reprinted_at"] = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
+
+        raw_bytes = escpos.generate_escpos_stream_for_token(t, include_office_copy=True, is_reprint=is_reprint)
+        text_preview = escpos.generate_receipt_text(t, is_reprint=is_reprint)
+
+        if fmt in ("download", "bin", "raw"):
+            return send_file(
+                io.BytesIO(raw_bytes),
+                mimetype="application/octet-stream",
+                as_attachment=True,
+                download_name=f"token_{t['serial']}.bin"
+            )
+        elif fmt == "text":
+            return text_preview, 200, {"Content-Type": "text/plain; charset=utf-8"}
+        else:
+            return jsonify({
+                "success": True,
+                "serial": t["serial"],
+                "is_reprint": is_reprint,
+                "escpos_base64": base64.b64encode(raw_bytes).decode("ascii"),
+                "escpos_text": text_preview,
+                "byte_count": len(raw_bytes)
+            })
+    finally:
+        db.close()
+
+
+@app.post("/api/tokens/print-escpos")
+@require_auth
+def print_token_escpos(user):
+    """
+    Directly dispatches raw ESC/POS commands with auto-cutter to a connected
+    80mm thermal receipt printer (e.g. ATPOS AT-301 via USB spooler or TCP network).
+    """
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query", data.get("serial", ""))).strip()
+    token_id = data.get("token_id")
+    printer_name = data.get("printer_name")
+    is_reprint = bool(data.get("is_reprint", False))
+    reason = str(data.get("reason", "Lost or torn receipt")).strip()
+
+    if not query and not token_id:
+        return jsonify(error="Please provide token_id or serial."), 400
+
+    db = connect()
+    try:
+        matched = None
+        if token_id:
+            r = db.execute("SELECT * FROM tokens WHERE id = ?", (token_id,)).fetchone()
+            if r:
+                matched = token_json(r)
+        if not matched and query:
+            clean_q = query.upper()
+            r = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (clean_q,)).fetchone()
+            if r:
+                matched = token_json(r)
+
+        if not matched:
+            return jsonify(error=f"Token '{query or token_id}' not found."), 404
+
+        if is_reprint:
+            log_reprint(
+                db=db,
+                token_id=matched["id"],
+                token_serial=matched["serial"],
+                clerk_id=user["username"],
+                clerk_name=user["name"],
+                reason=reason
+            )
+            db.commit()
+            matched["is_reprint"] = True
+            matched["reprint_reason"] = reason
+            matched["reprinted_at"] = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
+
+        raw_bytes = escpos.generate_escpos_stream_for_token(matched, include_office_copy=True, is_reprint=is_reprint)
+        ok, msg = escpos.send_to_thermal_printer(raw_bytes, printer_name=printer_name)
+
+        return jsonify({
+            "success": ok,
+            "message": msg,
+            "token": matched,
+            "escpos_base64": base64.b64encode(raw_bytes).decode("ascii"),
+            "byte_count": len(raw_bytes)
+        }), (200 if ok else 500)
+    finally:
+        db.close()
+
+
+@app.get("/api/printers")
+@require_auth
+def list_printers(user):
+    """
+    Returns list of local and network printers detected by the system.
+    """
+    installed = escpos.get_installed_printers()
+    default_p = None
+    if escpos.win32print is not None:
+        try:
+            default_p = escpos.win32print.GetDefaultPrinter()
+        except Exception:
+            pass
+    thermal_candidate = None
+    for name in installed:
+        if any(k in name.lower() for k in ["atpos", "pos", "thermal", "receipt", "at-301", "80mm", "tm-t", "tvs", "rp"]):
+            thermal_candidate = name
+            break
+    return jsonify({
+        "printers": installed,
+        "default_printer": default_p,
+        "recommended_thermal_printer": thermal_candidate or default_p
+    })
 
 
 @app.get("/api/devotees/search")

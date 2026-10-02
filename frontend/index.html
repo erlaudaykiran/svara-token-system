@@ -85,40 +85,61 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 .toast{position:fixed;bottom:24px;right:24px;background:#1b5e20;color:#fff;padding:12px 20px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.2);font-family:Arial,sans-serif;font-size:14px;font-weight:700;z-index:10000;display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .3s}
 .toast.show{opacity:1}
 
-/* Thermal printer print area */
+/* Thermal printer 80mm (3-inch) specifications (ATPOS AT-301 compatible) */
 #printArea{display:none}
-.token{width:74mm;border:1.5px dashed #000;padding:4mm 3mm 5mm;text-align:center;font-family:Arial,sans-serif;color:#000;margin:0 auto 6mm;page-break-inside:avoid;page-break-after:always;break-after:page}
-.token-header{display:flex;align-items:center;justify-content:flex-start;gap:6px;margin-bottom:4px;text-align:left}
-.token-logo{width:50px;height:50px;object-fit:contain;flex-shrink:0}
+.token{
+  width:72mm;
+  max-width:72mm;
+  box-sizing:border-box;
+  border:1.5px dashed #000;
+  padding:2.5mm 1.5mm 3.5mm;
+  text-align:center;
+  font-family:'Courier New', Consolas, Monaco, monospace, sans-serif;
+  color:#000;
+  margin:0 auto 6mm;
+  page-break-inside:avoid;
+  page-break-after:always;
+  break-after:page;
+  overflow:hidden;
+}
+.token-header{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:3px;text-align:left}
+.token-logo{width:42px;height:42px;object-fit:contain;flex-shrink:0}
 .token-header-text{flex-grow:1;text-align:center}
-.token .h{font-size:24px;font-weight:700;letter-spacing:.25em;padding-left:.25em;font-family:Georgia,serif;line-height:1.1;margin:0}
-.token .sub{font-size:13px;font-weight:700;margin-top:1px}
-.token .contact{font-size:10px;font-weight:700;margin-top:2px;letter-spacing:.01em}
-.token .cat{font-size:16px;font-weight:700;margin-top:6px;border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 0}
-.token .no{font-size:38px;font-weight:700;margin:5px 0;letter-spacing:.04em}
-.token .d{font-size:13px;text-align:left;margin-top:4px;line-height:1.4}
-.token .cp{font-size:12px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px}
-.token .blessing{font-size:11px;font-weight:700;margin-top:6px;border-top:1px dashed #444;padding-top:4px;line-height:1.35;text-align:center;font-style:italic}
-.cut-spacer{height:10mm}
-.token .reprint-badge{font-size:11px;font-weight:900;letter-spacing:1px;padding:2px 0;margin:3px 0;border-top:1px dashed #000;border-bottom:1px dashed #000;text-align:center}
+.token .h{font-size:20px;font-weight:900;letter-spacing:.12em;font-family:Georgia,serif;line-height:1.1;margin:0}
+.token .sub{font-size:11.5px;font-weight:700;margin-top:1px;letter-spacing:.02em}
+.token .contact{font-size:9.5px;font-weight:700;margin-top:2px;letter-spacing:.01em;white-space:nowrap}
+.token .cat{font-size:13.5px;font-weight:900;margin-top:4px;border-top:1px solid #000;border-bottom:1px solid #000;padding:2.5px 0;letter-spacing:.03em;text-transform:uppercase}
+.token .no{font-size:32px;font-weight:900;margin:3px 0;letter-spacing:.05em;line-height:1.1}
+.token .d-table{width:100%;border-collapse:collapse;margin:4px 0;font-size:11.5px;line-height:1.35;text-align:left}
+.token .d-table td{padding:1.5px 0;vertical-align:top}
+.token .d-table .label{width:38%;font-weight:700}
+.token .d-table .val{width:62%}
+.token .cp{font-size:10.5px;font-weight:900;margin-top:4px;border-top:1px dashed #333;padding-top:3px;letter-spacing:.05em;text-transform:uppercase}
+.token .blessing{font-size:10px;font-weight:700;margin-top:4px;border-top:1px dashed #333;padding-top:3px;line-height:1.3;text-align:center;font-style:italic}
+.token .reprint-badge{font-size:11px;font-weight:900;letter-spacing:.5px;padding:2px 0;margin:3px 0;border-top:1.5px dashed #000;border-bottom:1.5px dashed #000;text-align:center}
+.cut-spacer{height:12mm;width:100%;clear:both}
 .quick-lookup-card{background:#fff;border:1.5px solid var(--line);border-radius:6px;padding:12px;margin-top:8px}
 .quick-lookup-match{background:#fff9eb;border:1px solid var(--gold);border-radius:4px;padding:10px 12px;margin-bottom:8px}
 .booking-item{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:13px;flex-wrap:wrap;gap:6px}
 .booking-item:last-child{border-bottom:none}
 
 @media print{
- @page{size:80mm auto;margin:2mm 0}
- body{background:#fff;margin:0;padding:0}
+ @page{size:80mm auto;margin:0}
+ html,body{background:#fff;margin:0!important;padding:0!important;width:80mm!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
  header,main,#loginSection,#editModal,#receiptModal,#reprintModal,#reportModal,#wipeAuthModal,.toast{display:none!important}
- #printArea{display:block}
+ #printArea{display:block!important;width:80mm!important;margin:0 auto!important;padding:0!important}
  .token{
    width:72mm!important;
+   max-width:72mm!important;
+   box-sizing:border-box!important;
    margin:0 auto!important;
-   padding:3mm 2mm 5mm!important;
+   padding:2mm 1.5mm 3mm!important;
+   border:1px dashed #000!important;
    page-break-inside:avoid!important;
    page-break-after:always!important;
    break-after:page!important;
  }
+ .cut-spacer{height:12mm!important;display:block!important}
 }
 </style>
 </head>
@@ -260,6 +281,10 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <p class="counts" id="counts"></p>
     
     <div class="row">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:#fcf8ee;border:1px solid var(--line);border-radius:4px;padding:4px 8px;">
+        <span style="font-size:12px;font-weight:700;color:var(--maroon)">🖨️ 80mm Printer:</span>
+        <select id="printerSelect" style="padding:4px 6px;font-size:12px;border:1px solid var(--line);border-radius:4px;background:#fff;max-width:200px" title="Selected Thermal Receipt Printer"></select>
+      </div>
       <button class="s" id="reprintTokenModalBtn" style="color:var(--maroon);border-color:var(--maroon);font-weight:700">🔄 Reprint Token</button>
       <button class="s" id="shiftReportBtn" style="color:var(--gold);border-color:var(--gold);font-weight:700">📊 Shift / Daily Report</button>
       <button class="s" id="xlsBtn">Download Excel</button>
@@ -303,8 +328,10 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     </select>
     <div class="err" id="reprintErr"></div>
     <div id="reprintPreviewArea" class="hidden" style="margin-top:12px;background:#fcf8ee;border:1px solid var(--line);border-radius:6px;padding:12px"></div>
-    <div class="row" style="margin-top:16px">
-      <button type="button" class="p" id="reprintExecuteBtn" disabled>🖨️ Print Clean Duplicate Copy</button>
+    <div class="row" style="margin-top:16px;gap:8px;flex-wrap:wrap">
+      <button type="button" class="p" id="reprintExecuteBtn" disabled>🖨️ Thermal Print (80mm)</button>
+      <button type="button" class="s" id="reprintEscposBtn" disabled style="background:#283593;color:#fff;border-color:#283593;font-weight:700">⚡ ESC/POS Direct (Auto-Cut)</button>
+      <button type="button" class="s" id="reprintDownloadBinBtn" disabled>⬇️ .bin</button>
       <button type="button" class="s" id="reprintCancelBtn">Cancel</button>
     </div>
   </div>
@@ -538,6 +565,7 @@ function showApp(user){
     document.getElementById('adminWipeBtn').classList.add('hidden');
   }
   refresh();
+  loadPrinters();
 }
 
 function checkAuth(){
@@ -755,8 +783,13 @@ document.getElementById('quantity').oninput = updateQtyPreview;
 function tokenHTML(t, copy){
   var hasPrice = (t.price && Number(t.price) > 0);
   var priceHeader = hasPrice ? (' &mdash; ₹' + t.price) : '';
-  var priceDetail = hasPrice ? ('<b>Price: ₹' + t.price + '</b><br>') : '';
-  var reprintBadge = t.is_reprint ? '<div class="reprint-badge">*** REPRINT / DUPLICATE COPY ***</div>' : '';
+  var reprintBadge = '';
+  if(t.is_reprint){
+    reprintBadge = '<div class="reprint-badge">*** REPRINT / DUPLICATE COPY ***</div>' +
+      (t.reprint_reason ? '<div style="font-size:10px;margin-bottom:2px;font-weight:700">Reason: ' + esc(t.reprint_reason) + '</div>' : '') +
+      (t.reprinted_at ? '<div style="font-size:9.5px;color:#222;margin-bottom:3px">Reprinted: ' + esc(t.reprinted_at) + '</div>' : '');
+  }
+
   return '<div class="token">' +
     reprintBadge +
     '<div class="token-header">' +
@@ -769,17 +802,17 @@ function tokenHTML(t, copy){
     '</div>' +
     '<div class="cat">' + esc(t.type) + priceHeader + '</div>' +
     '<div class="no">' + esc(t.serial) + '</div>' +
-    '<div class="d">' +
-      priceDetail +
-      'Name: ' + esc(t.name) + '<br>' +
-      'Mobile: ' + esc(t.mobile) + '<br>' +
-      'Payment: ' + esc(t.payment) + '<br>' +
-      'Counter: ' + esc(t.counter_name || 'Counter') + '<br>' +
-      'Date: ' + t.date + '<br>' +
-      'Time: ' + t.time +
-    '</div>' +
+    '<table class="d-table">' +
+      (hasPrice ? '<tr><td class="label">Price:</td><td class="val"><b>₹' + t.price + '</b></td></tr>' : '') +
+      '<tr><td class="label">Devotee:</td><td class="val"><b>' + esc(t.name) + '</b></td></tr>' +
+      '<tr><td class="label">Mobile:</td><td class="val">' + esc(t.mobile) + '</td></tr>' +
+      '<tr><td class="label">Payment:</td><td class="val">' + esc(t.payment) + '</td></tr>' +
+      '<tr><td class="label">Counter:</td><td class="val">' + esc(t.counter_name || 'Counter') + '</td></tr>' +
+      '<tr><td class="label">Date:</td><td class="val">' + esc(t.date) + '</td></tr>' +
+      '<tr><td class="label">Time:</td><td class="val">' + esc(t.time) + '</td></tr>' +
+    '</table>' +
     '<div class="blessing">Thank you for registration!<br>May Goddess Durgamatha bless you and your family.</div>' +
-    '<div class="cp">' + copy + '</div>' +
+    '<div class="cp">[ ' + esc(copy).toUpperCase() + ' ]</div>' +
     '<div class="cut-spacer"></div>' +
   '</div>';
 }
@@ -964,7 +997,8 @@ function renderTable(){
 
       if(!isVoid){
         h += '<button class="action-btn" style="background:#25D366;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700" onclick="resendReceipt(\'' + esc(x.serial) + '\')">📱 WhatsApp</button>' +
-             '<button class="action-btn" style="background:var(--maroon);color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="triggerReprint(\'' + esc(x.serial) + '\')">🖨️ Reprint</button>';
+             '<button class="action-btn" style="background:var(--maroon);color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="triggerReprint(\'' + esc(x.serial) + '\')">🖨️ Reprint</button>' +
+             '<button class="action-btn" style="background:#283593;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="directEscposPrint(\'' + esc(x.serial) + '\', true, \'Counter Reprint\')" title="Direct ESC/POS Print with Auto-Cutter">⚡ ESC/POS</button>';
       }
 
       if(isAdmin){
@@ -1207,6 +1241,8 @@ function openReprintModal(){
   document.getElementById('reprintPreviewArea').innerHTML = '';
   document.getElementById('reprintPreviewArea').classList.add('hidden');
   document.getElementById('reprintExecuteBtn').disabled = true;
+  if(document.getElementById('reprintEscposBtn')) document.getElementById('reprintEscposBtn').disabled = true;
+  if(document.getElementById('reprintDownloadBinBtn')) document.getElementById('reprintDownloadBinBtn').disabled = true;
   document.getElementById('reprintModal').classList.remove('hidden');
   setTimeout(function(){ document.getElementById('reprintQuery').focus(); }, 100);
 }
@@ -1226,6 +1262,8 @@ document.getElementById('reprintFindBtn').onclick = function(){
   var err = document.getElementById('reprintErr');
   var prev = document.getElementById('reprintPreviewArea');
   var execBtn = document.getElementById('reprintExecuteBtn');
+  var escposBtn = document.getElementById('reprintEscposBtn');
+  var binBtn = document.getElementById('reprintDownloadBinBtn');
   if(!q){
     err.textContent = 'Please enter a serial or mobile number.';
     return;
@@ -1241,6 +1279,8 @@ document.getElementById('reprintFindBtn').onclick = function(){
         err.textContent = 'No token record found matching "' + q + '".';
         prev.classList.add('hidden');
         execBtn.disabled = true;
+        if(escposBtn) escposBtn.disabled = true;
+        if(binBtn) binBtn.disabled = true;
         activeReprintToken = null;
         return;
       }
@@ -1251,6 +1291,8 @@ document.getElementById('reprintFindBtn').onclick = function(){
           '<div style="font-size:12px;color:#6b5a4a;margin-top:2px">Issued: ' + esc(activeReprintToken.date) + ' ' + esc(activeReprintToken.time) + ' &bull; ' + esc(activeReprintToken.counter_name) + '</div>';
         prev.classList.remove('hidden');
         execBtn.disabled = false;
+        if(escposBtn) escposBtn.disabled = false;
+        if(binBtn) binBtn.disabled = false;
       } else {
         var h = '<div style="font-weight:700;color:var(--maroon);margin-bottom:6px">Multiple Tokens Found (' + res.results.length + '):</div>';
         res.results.forEach(function(t){
@@ -1262,6 +1304,8 @@ document.getElementById('reprintFindBtn').onclick = function(){
         prev.innerHTML = h;
         prev.classList.remove('hidden');
         execBtn.disabled = true;
+        if(escposBtn) escposBtn.disabled = true;
+        if(binBtn) binBtn.disabled = true;
       }
     })
     .catch(function(e){
@@ -1283,6 +1327,84 @@ document.getElementById('reprintExecuteBtn').onclick = function(){
   var reason = document.getElementById('reprintReason').value;
   triggerReprint(activeReprintToken.serial, reason);
 };
+
+if(document.getElementById('reprintEscposBtn')){
+  document.getElementById('reprintEscposBtn').onclick = function(){
+    if(!activeReprintToken) return;
+    var reason = document.getElementById('reprintReason').value;
+    directEscposPrint(activeReprintToken.serial, true, reason);
+  };
+}
+
+if(document.getElementById('reprintDownloadBinBtn')){
+  document.getElementById('reprintDownloadBinBtn').onclick = function(){
+    if(!activeReprintToken) return;
+    var reason = document.getElementById('reprintReason').value;
+    window.open('/api/tokens/' + encodeURIComponent(activeReprintToken.serial) + '/escpos?format=download&reprint=true&reason=' + encodeURIComponent(reason), '_blank');
+  };
+}
+
+function directEscposPrint(serial, isReprint, reason){
+  var sel = document.getElementById('printerSelect');
+  var pName = sel ? sel.value : '';
+  showToast('⏳ Sending ESC/POS commands with Auto-Cutter to printer...');
+  api('/api/tokens/print-escpos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      serial: serial,
+      printer_name: pName,
+      is_reprint: !!isReprint,
+      reason: reason || 'Receipt print'
+    })
+  })
+  .then(function(res){
+    if(res.success){
+      showToast('✅ ' + (res.message || 'Printed with Auto-Cutter!'));
+      if(isReprint){
+        closeReprintModal();
+      }
+    } else {
+      alert('Printer warning: ' + res.message + '\n\nOpening 80mm thermal print dialog instead.');
+      if(isReprint){
+        triggerReprint(serial, reason);
+      } else {
+        window.print();
+      }
+    }
+  })
+  .catch(function(e){
+    alert('Direct print notice: ' + e.message + '\n\nOpening 80mm thermal browser print...');
+    if(isReprint){
+      triggerReprint(serial, reason);
+    } else {
+      window.print();
+    }
+  });
+}
+
+function loadPrinters(){
+  api('/api/printers')
+    .then(function(res){
+      var sel = document.getElementById('printerSelect');
+      if(!sel) return;
+      sel.innerHTML = '';
+      if(!res.printers || !res.printers.length){
+        sel.innerHTML = '<option value="">Standard 80mm Thermal</option>';
+        return;
+      }
+      res.printers.forEach(function(p){
+        var opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if(p === res.recommended_thermal_printer || p === res.default_printer){
+          opt.selected = true;
+        }
+        sel.appendChild(opt);
+      });
+    })
+    .catch(function(){});
+}
 
 
 /* =========================================================
@@ -1623,6 +1745,7 @@ function checkStorageStatus(){
 }
 
 checkAuth();
+loadPrinters();
 checkStorageStatus();
 </script>
 </body>
