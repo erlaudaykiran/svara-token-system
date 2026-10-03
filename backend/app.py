@@ -434,6 +434,18 @@ def authenticate_user(username, password):
     user_key = str(username).strip().lower()
     password = str(password).strip()
 
+    # Fallback: if password is empty and user input contains both credentials (e.g., pasted "admin admin@svara2026" or "counter1:counter1@2026")
+    if user_key and not password:
+        for delim in ("\t", ":", ",", " "):
+            if delim in user_key:
+                parts = user_key.split(delim, 1)
+                cand_u = parts[0].strip().lower()
+                cand_p = parts[1].strip()
+                if cand_u and cand_p:
+                    matched = authenticate_user(cand_u, cand_p)
+                    if matched:
+                        return matched
+
     # Allow "administrator" alias for whatever admin user is configured
     if user_key in ("admin", "administrator"):
         for k, v in USERS.items():
