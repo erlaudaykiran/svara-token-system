@@ -81,16 +81,21 @@ DB_PATH = os.environ.get("SVARA_DB", os.path.join(ROOT, "database", "svara.db"))
 FRONTEND = os.path.join(ROOT, "frontend")
 EXPORT_DIR = os.path.join(ROOT, "exports")
 EXPORT_FILE = os.path.join(EXPORT_DIR, "SVARA_2026_Tokens.xlsx")
+EXPORT_ARCHANA_FILE = os.path.join(EXPORT_DIR, "SVARA_2026_Kunkuma_Archana.xlsx")
 BACKUP_DIR = os.path.join(ROOT, "backups")
 
 TZ_NAME = os.environ.get("SVARA_TZ", "Asia/Kolkata")
 
-# Token Prices
+# Token Prices & Classification
 PRICES = {
     "RE": 301,  # Royal Enfield
     "SI": 201,  # Silver
-    "SA": 0     # Saree (No price / free)
+    "SA": 0,    # Saree (No price / free)
+    "KA": 251   # Kunkuma Archana (Special Seva Puja Token)
 }
+
+LUCKY_DRAW_KEYS = ("RE", "SI", "SA")
+ARCHANA_KEYS = ("KA",)
 
 
 # User accounts configuration:
@@ -188,9 +193,10 @@ def init_db():
             """)
             db.execute("""
                 INSERT INTO counters (type_key, label, prefix, last_no) VALUES
-                    ('RE', 'Royal Enfield', 'B',  0),
-                    ('SI', 'Silver',        'S',  0),
-                    ('SA', 'Saree',         'SA', 0)
+                    ('RE', 'Royal Enfield',   'B',  0),
+                    ('SI', 'Silver',          'S',  0),
+                    ('SA', 'Saree',           'SA', 0),
+                    ('KA', 'Kunkuma Archana', 'KA', 0)
                 ON CONFLICT (type_key) DO NOTHING;
             """)
             db.execute("""
@@ -205,7 +211,7 @@ def init_db():
                     voided_by     VARCHAR(50),
                     name          VARCHAR(100) NOT NULL,
                     mobile        VARCHAR(20) NOT NULL,
-                    payment       VARCHAR(20) NOT NULL CHECK (payment IN ('Cash', 'UPI')),
+                    payment       VARCHAR(30) NOT NULL CHECK (payment IN ('Cash', 'UPI', 'Payment Pending', 'Pending')),
                     created_by    VARCHAR(50) NOT NULL DEFAULT 'admin',
                     counter_name  VARCHAR(50) NOT NULL DEFAULT 'Main Counter',
                     created_date  VARCHAR(20) NOT NULL,
@@ -224,6 +230,11 @@ def init_db():
             db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS voided_by VARCHAR(50);")
             db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS created_by VARCHAR(50) NOT NULL DEFAULT 'admin';")
             db.execute("ALTER TABLE tokens ADD COLUMN IF NOT EXISTS counter_name VARCHAR(50) NOT NULL DEFAULT 'Main Counter';")
+            try:
+                db.execute("ALTER TABLE tokens DROP CONSTRAINT IF EXISTS tokens_payment_check;")
+                db.execute("ALTER TABLE tokens ADD CONSTRAINT tokens_payment_check CHECK (payment IN ('Cash', 'UPI', 'Payment Pending', 'Pending'));")
+            except Exception:
+                pass
 
             # Active sessions per user ID for concurrent logins (drop legacy id-based table if exists)
             db.execute("""
@@ -358,13 +369,29 @@ def init_db():
             db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_mobile ON tokens(mobile)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_tokens_serial ON tokens(serial)")
 
+        # Ensure all category rows exist in counters table
+        for tkey, lbl, pfx in [('RE', 'Royal Enfield', 'B'), ('SI', 'Silver', 'S'), ('SA', 'Saree', 'SA'), ('KA', 'Kunkuma Archana', 'KA')]:
+            if db.is_pg:
+                db.execute(
+                    "INSERT INTO counters (type_key, label, prefix, last_no) VALUES (?, ?, ?, 0) "
+                    "ON CONFLICT (type_key) DO NOTHING",
+                    (tkey, lbl, pfx)
+                )
+            else:
+                db.execute(
+                    "INSERT OR IGNORE INTO counters (type_key, label, prefix, last_no) VALUES (?, ?, ?, 0)",
+                    (tkey, lbl, pfx)
+                )
+        db.commit()
+
         # Counter synchronization & Floor protection:
         # Guarantee counters.last_no is NEVER lower than any existing token serial number
-        # and NEVER lower than any configured environment minimum floor (MIN_RE_NO, MIN_SI_NO, MIN_SA_NO)
+        # and NEVER lower than any configured environment minimum floor (MIN_RE_NO, MIN_SI_NO, MIN_SA_NO, MIN_KA_NO)
         floors = {
             "RE": int(os.environ.get("MIN_RE_NO", os.environ.get("START_RE_NO", 0))),
             "SI": int(os.environ.get("MIN_SI_NO", os.environ.get("START_SI_NO", 0))),
-            "SA": int(os.environ.get("MIN_SA_NO", os.environ.get("START_SA_NO", 0)))
+            "SA": int(os.environ.get("MIN_SA_NO", os.environ.get("START_SA_NO", 0))),
+            "KA": int(os.environ.get("MIN_KA_NO", os.environ.get("START_KA_NO", 0)))
         }
 
         counters_rows = db.execute("SELECT type_key, prefix, last_no FROM counters").fetchall()
@@ -949,20 +976,52 @@ def build_workbook(rows, title="Tokens"):
     return wb
 
 
-def all_rows(db, user=None, counter_filter=None, newest_first=False):
+def all_rows(db, user=None, counter_filter=None, newest_first=False, category=None):
     order = "DESC" if newest_first else "ASC"
+    conditions = []
+    params = []
+
     if user and user["role"] != "admin":
-        cur = db.execute(f"SELECT * FROM tokens WHERE LOWER(created_by) = ? ORDER BY id {order}", (user["username"].lower(),))
+        u_clean = user["username"].lower().replace(" ", "")
+        conditions.append("(REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?)")
+        params.extend([u_clean, u_clean])
     elif counter_filter and counter_filter != "all":
-        cur = db.execute(f"SELECT * FROM tokens WHERE LOWER(created_by) = ? ORDER BY id {order}", (counter_filter.lower(),))
-    else:
-        cur = db.execute(f"SELECT * FROM tokens ORDER BY id {order}")
+        cf = counter_filter.strip().lower()
+        if cf in ("pending", "payment pending"):
+            conditions.append("payment IN ('Payment Pending', 'Pending')")
+        elif cf in ("archana", "kunkuma archana", "ka"):
+            conditions.append("type_key = 'KA'")
+        elif cf in ("luckydraw", "lucky draw", "ld"):
+            conditions.append("type_key IN ('RE', 'SI', 'SA')")
+        else:
+            cf_clean = cf.replace(" ", "")
+            conditions.append("(REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?)")
+            params.extend([cf_clean, cf_clean])
+
+    if category:
+        cat_lower = str(category).lower().strip()
+        if cat_lower in ("archana", "kunkuma archana", "ka"):
+            conditions.append("type_key = 'KA'")
+        elif cat_lower in ("luckydraw", "lucky draw"):
+            conditions.append("type_key IN ('RE', 'SI', 'SA')")
+        elif cat_lower.upper() in ("RE", "SI", "SA", "KA"):
+            conditions.append("type_key = ?")
+            params.append(cat_lower.upper())
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    cur = db.execute(f"SELECT * FROM tokens {where_clause} ORDER BY id {order}", tuple(params))
     return cur.fetchall()
 
 
 def refresh_excel_file(db):
     try:
-        build_workbook(all_rows(db)).save(EXPORT_FILE)
+        ld_rows = all_rows(db, category="luckydraw")
+        build_workbook(ld_rows, title="Lucky Draw Tokens").save(EXPORT_FILE)
+    except OSError:
+        pass
+    try:
+        ka_rows = all_rows(db, category="archana")
+        build_workbook(ka_rows, title="Kunkuma Archana").save(EXPORT_ARCHANA_FILE)
     except OSError:
         pass
 
@@ -1058,9 +1117,11 @@ def counters(user):
             void_count = list(void_row.values())[0] if isinstance(void_row, dict) else void_row[0]
 
             # Current user active count
+            u_clean = user["username"].lower().replace(" ", "")
             user_count_cur = db.execute(
-                "SELECT COUNT(*) FROM tokens WHERE type_key = ? AND status = 'ACTIVE' AND LOWER(created_by) = ?",
-                (tk, user["username"].lower())
+                "SELECT COUNT(*) FROM tokens WHERE type_key = ? AND status = 'ACTIVE' "
+                "AND (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?)",
+                (tk, u_clean, u_clean)
             )
             user_count_row = user_count_cur.fetchone()
             user_count = list(user_count_row.values())[0] if isinstance(user_count_row, dict) else user_count_row[0]
@@ -1074,42 +1135,112 @@ def counters(user):
                 "next": fmt_serial(c["prefix"], c["last_no"] + 1)
             }
 
-        # Breakdown stats for admin (active vs void)
+        # Lucky Draw combined stats (RE, SI, SA strictly isolated)
+        ld_cur = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+            "WHERE type_key IN ('RE', 'SI', 'SA') AND status = 'ACTIVE'"
+        )
+        ld_row = ld_cur.fetchone()
+        ld_vals = list(ld_row.values()) if isinstance(ld_row, dict) else ld_row
+        ld_active_count, ld_active_amount = ld_vals[0], int(ld_vals[1])
+
+        ld_vcur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key IN ('RE', 'SI', 'SA') AND status = 'VOID'")
+        ld_vrow = ld_vcur.fetchone()
+        ld_void_count = list(ld_vrow.values())[0] if isinstance(ld_vrow, dict) else ld_vrow[0]
+
+        # Kunkuma Archana combined stats (KA strictly isolated)
+        ka_cur = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+            "WHERE type_key = 'KA' AND status = 'ACTIVE'"
+        )
+        ka_row = ka_cur.fetchone()
+        ka_vals = list(ka_row.values()) if isinstance(ka_row, dict) else ka_row
+        ka_active_count, ka_active_amount = ka_vals[0], int(ka_vals[1])
+
+        ka_vcur = db.execute("SELECT COUNT(*) FROM tokens WHERE type_key = 'KA' AND status = 'VOID'")
+        ka_vrow = ka_vcur.fetchone()
+        ka_void_count = list(ka_vrow.values())[0] if isinstance(ka_vrow, dict) else ka_vrow[0]
+
+        # Payment Pending stats
+        pend_cur = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+            "WHERE payment IN ('Payment Pending', 'Pending') AND status = 'ACTIVE'"
+        )
+        pend_row = pend_cur.fetchone()
+        p_vals = list(pend_row.values()) if isinstance(pend_row, dict) else pend_row
+        pending_count, pending_amount = p_vals[0], int(p_vals[1])
+
+        # Counter Breakdown for Admin (handles spaces, counter1, counter 1, Counter 1)
         counter_breakdown = {}
         if user["role"] == "admin":
             for ukey in USERS:
-                c_cur = db.execute(
-                    "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ? AND status = 'ACTIVE'",
-                    (ukey,)
+                uk_clean = ukey.lower().replace(" ", "")
+                # Lucky draw for this counter
+                ld_c_cur = db.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+                    "WHERE (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?) "
+                    "AND type_key IN ('RE', 'SI', 'SA') AND status = 'ACTIVE'",
+                    (uk_clean, uk_clean)
                 )
-                c_row = c_cur.fetchone()
-                if isinstance(c_row, dict):
-                    vals = list(c_row.values())
-                    cnt, amt = vals[0], vals[1]
-                else:
-                    cnt, amt = c_row[0], c_row[1]
+                ld_c_row = ld_c_cur.fetchone()
+                ld_c_vals = list(ld_c_row.values()) if isinstance(ld_c_row, dict) else ld_c_row
+                c_ld_cnt, c_ld_amt = ld_c_vals[0], int(ld_c_vals[1])
 
-                v_cur = db.execute("SELECT COUNT(*) FROM tokens WHERE LOWER(created_by) = ? AND status = 'VOID'", (ukey,))
-                v_row = v_cur.fetchone()
-                v_cnt = list(v_row.values())[0] if isinstance(v_row, dict) else v_row[0]
+                ld_vc_cur = db.execute(
+                    "SELECT COUNT(*) FROM tokens "
+                    "WHERE (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?) "
+                    "AND type_key IN ('RE', 'SI', 'SA') AND status = 'VOID'",
+                    (uk_clean, uk_clean)
+                )
+                ld_vc_row = ld_vc_cur.fetchone()
+                c_ld_vcnt = list(ld_vc_row.values())[0] if isinstance(ld_vc_row, dict) else ld_vc_row[0]
+
+                # Archana for this counter
+                ka_c_cur = db.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+                    "WHERE (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?) "
+                    "AND type_key = 'KA' AND status = 'ACTIVE'",
+                    (uk_clean, uk_clean)
+                )
+                ka_c_row = ka_c_cur.fetchone()
+                ka_c_vals = list(ka_c_row.values()) if isinstance(ka_c_row, dict) else ka_c_row
+                c_ka_cnt, c_ka_amt = ka_c_vals[0], int(ka_c_vals[1])
+
+                # Pending for this counter
+                p_c_cur = db.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+                    "WHERE (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?) "
+                    "AND payment IN ('Payment Pending', 'Pending') AND status = 'ACTIVE'",
+                    (uk_clean, uk_clean)
+                )
+                p_c_row = p_c_cur.fetchone()
+                p_c_vals = list(p_c_row.values()) if isinstance(p_c_row, dict) else p_c_row
+                c_p_cnt, c_p_amt = p_c_vals[0], int(p_c_vals[1])
 
                 counter_breakdown[ukey] = {
                     "name": USERS[ukey]["name"],
-                    "count": cnt,
-                    "void_count": v_cnt,
-                    "amount": int(amt)
+                    "count": c_ld_cnt,
+                    "amount": c_ld_amt,
+                    "void_count": c_ld_vcnt,
+                    "archana_count": c_ka_cnt,
+                    "archana_amount": c_ka_amt,
+                    "pending_count": c_p_cnt,
+                    "pending_amount": c_p_amt,
+                    "total_count": c_ld_cnt + c_ka_cnt,
+                    "total_amount": c_ld_amt + c_ka_amt
                 }
 
+        # Current user stats
+        my_clean = user["username"].lower().replace(" ", "")
         user_summary_cur = db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens WHERE LOWER(created_by) = ? AND status = 'ACTIVE'",
-            (user["username"].lower(),)
+            "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM tokens "
+            "WHERE (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?) "
+            "AND status = 'ACTIVE'",
+            (my_clean, my_clean)
         )
         user_sum_row = user_summary_cur.fetchone()
-        if isinstance(user_sum_row, dict):
-            u_vals = list(user_sum_row.values())
-            my_cnt, my_amt = u_vals[0], u_vals[1]
-        else:
-            my_cnt, my_amt = user_sum_row[0], user_sum_row[1]
+        u_vals = list(user_sum_row.values()) if isinstance(user_sum_row, dict) else user_sum_row
+        my_cnt, my_amt = u_vals[0], int(u_vals[1])
 
     finally:
         db.close()
@@ -1117,7 +1248,21 @@ def counters(user):
     return jsonify({
         "categories": categories,
         "currentUser": user,
-        "myStats": {"count": my_cnt, "amount": int(my_amt)},
+        "myStats": {"count": my_cnt, "amount": my_amt},
+        "luckyDrawStats": {
+            "count": ld_active_count,
+            "amount": ld_active_amount,
+            "void_count": ld_void_count
+        },
+        "archanaStats": {
+            "count": ka_active_count,
+            "amount": ka_active_amount,
+            "void_count": ka_void_count
+        },
+        "pendingStats": {
+            "count": pending_count,
+            "amount": pending_amount
+        },
         "counterBreakdown": counter_breakdown if user["role"] == "admin" else None
     })
 
@@ -1147,8 +1292,10 @@ def create_token(user):
         return jsonify(error="Enter the customer name (max 60 characters)."), 400
     if not re.fullmatch(r"\d{10}", mobile):
         return jsonify(error="Enter a valid 10-digit mobile number."), 400
-    if payment not in ("Cash", "UPI"):
-        return jsonify(error="Select a payment type: Cash or UPI."), 400
+    if payment in ("Payment Pending", "Pending"):
+        payment = "Payment Pending"
+    elif payment not in ("Cash", "UPI"):
+        return jsonify(error="Select a valid payment type: Cash, UPI, or Payment Pending."), 400
 
     # Acquire threading lock for local multi-thread serialization
     with db_lock:
@@ -1326,8 +1473,10 @@ def edit_token(user, serial):
         return jsonify(error="Enter customer name (max 60 characters)."), 400
     if not re.fullmatch(r"\d{10}", mobile):
         return jsonify(error="Enter a valid 10-digit mobile number."), 400
-    if payment not in ("Cash", "UPI"):
-        return jsonify(error="Select a valid payment type: Cash or UPI."), 400
+    if payment in ("Payment Pending", "Pending"):
+        payment = "Payment Pending"
+    elif payment not in ("Cash", "UPI"):
+        return jsonify(error="Select a valid payment type: Cash, UPI, or Payment Pending."), 400
 
     db = connect()
     try:
@@ -1348,6 +1497,43 @@ def edit_token(user, serial):
 
         updated_row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
         return jsonify(success=True, token=token_json(updated_row), message=f"Token {serial} updated successfully.")
+    finally:
+        db.close()
+
+
+@app.post("/api/tokens/<serial>/mark-paid")
+@require_auth
+def mark_token_paid(user, serial):
+    """
+    Staff / Admin action to update a 'Payment Pending' token to 'Cash' or 'UPI'
+    once the devotee has completed payment.
+    """
+    serial = str(serial).strip().upper()
+    data = request.get_json(silent=True) or {}
+    new_payment = str(data.get("payment", "Cash")).strip()
+    if new_payment not in ("Cash", "UPI"):
+        return jsonify(error="Payment mode must be Cash or UPI."), 400
+
+    db = connect()
+    try:
+        row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
+        if not row:
+            return jsonify(error=f"Token {serial} was not found."), 404
+
+        status_val = row_val(row, "status", "ACTIVE")
+        if status_val == "VOID":
+            return jsonify(error=f"Cannot update payment for VOID token {serial}."), 400
+
+        db.execute("UPDATE tokens SET payment = ? WHERE UPPER(serial) = ?", (new_payment, serial))
+        db.commit()
+        refresh_excel_file(db)
+
+        updated_row = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (serial,)).fetchone()
+        return jsonify(
+            success=True,
+            token=token_json(updated_row),
+            message=f"Token {serial} payment updated to {new_payment} successfully."
+        )
     finally:
         db.close()
 
@@ -1704,11 +1890,13 @@ def shift_inventory_report(user):
             params.append(target_date)
 
         if user["role"] != "admin":
-            query += " AND LOWER(created_by) = ?"
-            params.append(user["username"].lower())
+            u_clean = user["username"].lower().replace(" ", "")
+            query += " AND (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?)"
+            params.extend([u_clean, u_clean])
         elif counter_filter and counter_filter != "all":
-            query += " AND LOWER(created_by) = ?"
-            params.append(counter_filter.lower())
+            cf_clean = counter_filter.lower().replace(" ", "")
+            query += " AND (REPLACE(LOWER(created_by), ' ', '') = ? OR REPLACE(LOWER(counter_name), ' ', '') = ?)"
+            params.extend([cf_clean, cf_clean])
 
         query += " ORDER BY id ASC"
         rows = db.execute(query, tuple(params)).fetchall()
@@ -1726,6 +1914,8 @@ def shift_inventory_report(user):
                 "cash_amount": 0,
                 "upi_count": 0,
                 "upi_amount": 0,
+                "pending_count": 0,
+                "pending_amount": 0,
                 "total_amount": 0,
                 "first_serial": None,
                 "last_serial": None
@@ -1742,6 +1932,8 @@ def shift_inventory_report(user):
                 "cash_amount": 0,
                 "upi_count": 0,
                 "upi_amount": 0,
+                "pending_count": 0,
+                "pending_amount": 0,
                 "total_amount": 0,
                 "first_serial": None,
                 "last_serial": None
@@ -1758,13 +1950,34 @@ def shift_inventory_report(user):
                 "cash_amount": 0,
                 "upi_count": 0,
                 "upi_amount": 0,
+                "pending_count": 0,
+                "pending_amount": 0,
+                "total_amount": 0,
+                "first_serial": None,
+                "last_serial": None
+            },
+            "KA": {
+                "key": "KA",
+                "label": "Kunkuma Archana",
+                "prefix": "KA",
+                "unit_price": PRICES.get("KA", 251),
+                "active_count": 0,
+                "void_count": 0,
+                "total_count": 0,
+                "cash_count": 0,
+                "cash_amount": 0,
+                "upi_count": 0,
+                "upi_amount": 0,
+                "pending_count": 0,
+                "pending_amount": 0,
                 "total_amount": 0,
                 "first_serial": None,
                 "last_serial": None
             }
         }
 
-        grand_totals = {
+        # Lucky Draw Grand Totals (RE, SI, SA strictly isolated)
+        lucky_draw_totals = {
             "active_count": 0,
             "void_count": 0,
             "total_count": 0,
@@ -1772,6 +1985,8 @@ def shift_inventory_report(user):
             "cash_amount": 0,
             "upi_count": 0,
             "upi_amount": 0,
+            "pending_count": 0,
+            "pending_amount": 0,
             "total_amount": 0
         }
 
@@ -1790,27 +2005,40 @@ def shift_inventory_report(user):
                 cat["first_serial"] = ser
             cat["last_serial"] = ser
 
+            is_lucky = (tk in LUCKY_DRAW_KEYS)
+
             if is_void:
                 cat["void_count"] += 1
-                grand_totals["void_count"] += 1
+                if is_lucky:
+                    lucky_draw_totals["void_count"] += 1
             else:
                 cat["active_count"] += 1
                 cat["total_amount"] += price
-                grand_totals["active_count"] += 1
-                grand_totals["total_amount"] += price
+                if is_lucky:
+                    lucky_draw_totals["active_count"] += 1
+                    lucky_draw_totals["total_amount"] += price
 
                 if pay == "Cash":
                     cat["cash_count"] += 1
                     cat["cash_amount"] += price
-                    grand_totals["cash_count"] += 1
-                    grand_totals["cash_amount"] += price
+                    if is_lucky:
+                        lucky_draw_totals["cash_count"] += 1
+                        lucky_draw_totals["cash_amount"] += price
                 elif pay == "UPI":
                     cat["upi_count"] += 1
                     cat["upi_amount"] += price
-                    grand_totals["upi_count"] += 1
-                    grand_totals["upi_amount"] += price
+                    if is_lucky:
+                        lucky_draw_totals["upi_count"] += 1
+                        lucky_draw_totals["upi_amount"] += price
+                elif pay in ("Payment Pending", "Pending"):
+                    cat["pending_count"] += 1
+                    cat["pending_amount"] += price
+                    if is_lucky:
+                        lucky_draw_totals["pending_count"] += 1
+                        lucky_draw_totals["pending_amount"] += price
 
-            grand_totals["total_count"] += 1
+            if is_lucky:
+                lucky_draw_totals["total_count"] += 1
 
         today_d, today_t, _ = now_parts()
         return jsonify({
@@ -1819,7 +2047,15 @@ def shift_inventory_report(user):
             "generated_by": user["name"],
             "generated_at": f"{today_d} {today_t}",
             "categories": [categories["RE"], categories["SI"], categories["SA"]],
-            "grand_totals": grand_totals
+            "grand_totals": lucky_draw_totals,
+            "lucky_draw_categories": [categories["RE"], categories["SI"], categories["SA"]],
+            "lucky_draw_totals": lucky_draw_totals,
+            "kunkuma_archana": categories["KA"],
+            "archana_totals": categories["KA"],
+            "combined_all_totals": {
+                "active_count": lucky_draw_totals["active_count"] + categories["KA"]["active_count"],
+                "total_amount": lucky_draw_totals["total_amount"] + categories["KA"]["total_amount"]
+            }
         })
     finally:
         db.close()
@@ -2222,20 +2458,30 @@ def import_backup(user):
 @require_auth
 def export_excel(user):
     counter_filter = request.args.get("counter", "").strip().lower()
+    category = request.args.get("category", "").strip().lower()
     db = connect()
     try:
-        rows = all_rows(db, user=user, counter_filter=counter_filter, newest_first=False)
-        sheet_title = "Tokens"
-        if user["role"] == "admin":
-            if counter_filter and counter_filter != "all":
-                file_name = f"SVARA_2026_Tokens_{counter_filter.capitalize()}.xlsx"
-                sheet_title = f"{counter_filter.capitalize()} Tokens"
-            else:
-                file_name = "SVARA_2026_Tokens_All.xlsx"
-                sheet_title = "All Counters"
+        if category in ("archana", "kunkuma archana", "ka"):
+            rows = all_rows(db, user=user, category="archana", newest_first=False)
+            file_name = "SVARA_2026_Kunkuma_Archana.xlsx"
+            sheet_title = "Kunkuma Archana"
+        elif category == "all":
+            rows = all_rows(db, user=user, counter_filter=counter_filter, newest_first=False)
+            file_name = "SVARA_2026_All_Tokens.xlsx"
+            sheet_title = "All Tokens"
         else:
-            file_name = f"SVARA_2026_Tokens_{user['username'].capitalize()}.xlsx"
-            sheet_title = f"{user['name']} Tokens"
+            # Default: strictly Lucky Draw tokens (RE, SI, SA)
+            rows = all_rows(db, user=user, counter_filter=counter_filter, category="luckydraw", newest_first=False)
+            if user["role"] == "admin":
+                if counter_filter and counter_filter not in ("all", "pending", "archana"):
+                    file_name = f"SVARA_2026_Tokens_{counter_filter.capitalize()}.xlsx"
+                    sheet_title = f"{counter_filter.capitalize()} Tokens"
+                else:
+                    file_name = "SVARA_2026_Tokens_All.xlsx"
+                    sheet_title = "Lucky Draw Tokens"
+            else:
+                file_name = f"SVARA_2026_Tokens_{user['username'].capitalize()}.xlsx"
+                sheet_title = f"{user['name']} Tokens"
 
         wb = build_workbook(rows, title=sheet_title)
     finally:
@@ -2245,6 +2491,23 @@ def export_excel(user):
     wb.save(buf)
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name=file_name,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/api/export/kunkuma-archana")
+@require_auth
+def export_kunkuma_archana(user):
+    db = connect()
+    try:
+        rows = all_rows(db, user=user, category="archana", newest_first=False)
+        wb = build_workbook(rows, title="Kunkuma Archana")
+    finally:
+        db.close()
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="SVARA_2026_Kunkuma_Archana.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 

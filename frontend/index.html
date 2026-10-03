@@ -195,7 +195,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
   </section>
 
   <section id="stepChoose">
-    <h2>Select Lucky Draw Token Type</h2>
+    <h2>Select Token Category</h2>
     <div class="choices">
       <button class="choice" data-k="RE">
         <b>Royal Enfield</b>
@@ -215,6 +215,13 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
         <b>Saree</b>
         <span class="choice-serial">Serial starts at SA00001</span>
         <span class="choice-next" id="nx-SA"></span>
+      </button>
+
+      <button class="choice" data-k="KA" style="border-color:#b71c1c;background:#fff8f8">
+        <b style="color:#b71c1c">🌸 Kunkuma Archana</b>
+        <div class="card-price" style="color:#b71c1c">₹251 / token</div>
+        <span class="choice-serial">Serial starts at KA00001</span>
+        <span class="choice-next" id="nx-KA"></span>
       </button>
     </div>
   </section>
@@ -243,6 +250,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
         <div class="pay">
           <label><input type="radio" name="pay" value="Cash"><span>Cash</span></label>
           <label><input type="radio" name="pay" value="UPI"><span>UPI</span></label>
+          <label><input type="radio" name="pay" value="Payment Pending"><span style="color:#d84315;font-weight:700">⏳ Payment Pending</span></label>
         </div>
 
         <div style="margin-top:14px;background:#fcf8ee;border:1.5px solid var(--line);border-radius:6px;padding:11px 13px">
@@ -275,6 +283,8 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
         <button class="tab-btn" data-counter="counter2">Counter 2</button>
         <button class="tab-btn" data-counter="counter3">Counter 3</button>
         <button class="tab-btn" data-counter="admin">Admin / Main</button>
+        <button class="tab-btn" data-counter="pending" style="color:#d84315;border-color:#ffab91;font-weight:700">⏳ Payment Pending</button>
+        <button class="tab-btn" data-counter="archana" style="color:#b71c1c;border-color:#ef9a9a;font-weight:700">🌸 Kunkuma Archana</button>
       </div>
     </div>
 
@@ -283,11 +293,14 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="row">
       <div style="display:inline-flex;align-items:center;gap:6px;background:#fcf8ee;border:1px solid var(--line);border-radius:4px;padding:4px 8px;">
         <span style="font-size:12px;font-weight:700;color:var(--maroon)">🖨️ 80mm Printer:</span>
-        <select id="printerSelect" style="padding:4px 6px;font-size:12px;border:1px solid var(--line);border-radius:4px;background:#fff;max-width:200px" title="Selected Thermal Receipt Printer"></select>
+        <select id="printerSelect" style="padding:4px 6px;font-size:12px;border:1px solid var(--line);border-radius:4px;background:#fff;max-width:180px" title="Selected Thermal Receipt Printer"></select>
       </div>
+      <button class="s" id="btConnectBtn" style="color:#1565c0;border-color:#1565c0;font-weight:700">🔵 Bluetooth Printer</button>
+      <button class="s" id="syncCountersBtn" style="color:var(--maroon);border-color:var(--maroon);font-weight:700">🔄 Sync Counters</button>
       <button class="s" id="reprintTokenModalBtn" style="color:var(--maroon);border-color:var(--maroon);font-weight:700">🔄 Reprint Token</button>
       <button class="s" id="shiftReportBtn" style="color:var(--gold);border-color:var(--gold);font-weight:700">📊 Shift / Daily Report</button>
-      <button class="s" id="xlsBtn">Download Excel</button>
+      <button class="s" id="xlsBtn">Download Excel (Lucky Draw)</button>
+      <button class="s" id="xlsArchanaBtn" style="color:#b71c1c;border-color:#b71c1c;font-weight:700">🌸 Download Excel (Kunkuma Archana)</button>
       <button class="s" id="backupGzBtn" style="color:var(--green);border-color:var(--green);font-weight:700">💾 Backup Database (.sql.gz)</button>
       <button class="s" id="backupDbBtn" style="color:var(--green);border-color:var(--green)">💾 Backup DB (.db)</button>
       <button class="s" id="viewBtn">View Records</button>
@@ -331,6 +344,7 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="row" style="margin-top:16px;gap:8px;flex-wrap:wrap">
       <button type="button" class="p" id="reprintExecuteBtn" disabled>🖨️ Thermal Print (80mm)</button>
       <button type="button" class="s" id="reprintEscposBtn" disabled style="background:#283593;color:#fff;border-color:#283593;font-weight:700">⚡ ESC/POS Direct (Auto-Cut)</button>
+      <button type="button" class="s" id="reprintRawbtBtn" disabled style="background:#00796b;color:#fff;border-color:#00796b;font-weight:700">⚡ RawBT (Android)</button>
       <button type="button" class="s" id="reprintDownloadBinBtn" disabled>⬇️ .bin</button>
       <button type="button" class="s" id="reprintCancelBtn">Cancel</button>
     </div>
@@ -442,11 +456,36 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
     <div class="pay">
       <label><input type="radio" name="editPay" value="Cash" id="editPayCash"><span>Cash</span></label>
       <label><input type="radio" name="editPay" value="UPI" id="editPayUPI"><span>UPI</span></label>
+      <label><input type="radio" name="editPay" value="Payment Pending" id="editPayPending"><span style="color:#d84315;font-weight:700">⏳ Payment Pending</span></label>
     </div>
     <div class="err" id="editErr"></div>
     <div class="row" style="margin-top:16px">
       <button type="button" class="p" id="editSaveBtn">Save Changes</button>
       <button type="button" class="s" id="editCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Payment Modal -->
+<div id="markPaidModal" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:18px;color:#2e7d32">💰 Mark Token as Paid</h3>
+      <button type="button" class="modal-close" id="markPaidModalClose">&times;</button>
+    </div>
+    <div style="font-family:Arial,sans-serif;font-size:13px;color:#6b5a4a;margin:10px 0 14px">
+      Collect payment for Token: <b id="markPaidSerial" style="color:var(--maroon);font-size:16px"></b>
+      <div id="markPaidDetails" style="margin-top:4px"></div>
+    </div>
+    <label>Collected Payment Method</label>
+    <div class="pay">
+      <label><input type="radio" name="markPaidPay" value="Cash" checked><span>Cash</span></label>
+      <label><input type="radio" name="markPaidPay" value="UPI"><span>UPI</span></label>
+    </div>
+    <div class="err" id="markPaidErr"></div>
+    <div class="row" style="margin-top:16px">
+      <button type="button" class="p" id="markPaidSubmitBtn" style="background:#2e7d32;border-color:#2e7d32">✅ Confirm Payment Collected</button>
+      <button type="button" class="s" id="markPaidCancelBtn">Cancel</button>
     </div>
   </div>
 </div>
@@ -485,9 +524,9 @@ th{background:#efe3c6;color:var(--maroon);font-weight:700}
 <div id="printArea"></div>
 
 <script>
-var TYPES = { RE: 'Royal Enfield', SI: 'Silver', SA: 'Saree' };
-var PRICES = { RE: 301, SI: 201, SA: 0 };
-var PREFIXES = { RE: 'B', SI: 'S', SA: 'SA' };
+var TYPES = { RE: 'Royal Enfield', SI: 'Silver', SA: 'Saree', KA: 'Kunkuma Archana' };
+var PRICES = { RE: 301, SI: 201, SA: 0, KA: 251 };
+var PREFIXES = { RE: 'B', SI: 'S', SA: 'SA', KA: 'KA' };
 
 var currentUser = null;
 var current = null;
@@ -656,7 +695,8 @@ function refresh(){
     var totVoid = 0;
     Object.keys(TYPES).forEach(function(k){
       if(cats[k]){
-        document.getElementById('nx-' + k).textContent = 'Next: ' + cats[k].next;
+        var nxEl = document.getElementById('nx-' + k);
+        if(nxEl) nxEl.textContent = 'Next: ' + cats[k].next;
         totActive += (cats[k].issued || 0);
         totVoid += (cats[k].voided || 0);
       }
@@ -665,14 +705,21 @@ function refresh(){
     if(res.currentUser && res.currentUser.role === 'admin' && res.counterBreakdown){
       var b = res.counterBreakdown;
       var sumHtml = '';
-      var totalRev = 0;
       var tabsHtml = '<button class="tab-btn ' + (activeCounterFilter === 'all' ? 'active' : '') + '" data-counter="all">All Counters (Combined)</button>';
       Object.keys(b).forEach(function(uk){
-        sumHtml += '<div class="summary-card"><b>' + esc(b[uk].name) + '</b>' + b[uk].count + ' active' + (b[uk].void_count ? ' (' + b[uk].void_count + ' void)' : '') + ' &bull; ₹' + b[uk].amount.toLocaleString('en-IN') + '</div>';
-        totalRev += b[uk].amount;
+        var item = b[uk];
         var isAct = (activeCounterFilter === uk) ? 'active' : '';
-        tabsHtml += '<button class="tab-btn ' + isAct + '" data-counter="' + esc(uk) + '">' + esc(b[uk].name) + '</button>';
+        sumHtml += '<div class="summary-card">' +
+          '<b>' + esc(item.name) + '</b>' +
+          'Lucky Draw: ' + item.count + ' active' + (item.void_count ? ' (' + item.void_count + ' void)' : '') + ' &bull; ₹' + (item.amount || 0).toLocaleString('en-IN') + '<br>' +
+          '<span style="color:#b71c1c;font-weight:700">🌸 Archana:</span> ' + (item.archana_count || 0) + ' active &bull; ₹' + ((item.archana_amount || 0)).toLocaleString('en-IN') +
+          (item.pending_count ? '<br><span style="color:#d84315;font-weight:700">⏳ Pending:</span> ' + item.pending_count + ' &bull; ₹' + (item.pending_amount || 0).toLocaleString('en-IN') : '') +
+          '</div>';
+        tabsHtml += '<button class="tab-btn ' + isAct + '" data-counter="' + esc(uk) + '">' + esc(item.name) + '</button>';
       });
+      tabsHtml += '<button class="tab-btn ' + (activeCounterFilter === 'pending' ? 'active' : '') + '" data-counter="pending" style="color:#d84315;border-color:#ffab91;font-weight:700">⏳ Payment Pending (' + (res.pendingStats ? res.pendingStats.count : 0) + ')</button>';
+      tabsHtml += '<button class="tab-btn ' + (activeCounterFilter === 'archana' ? 'active' : '') + '" data-counter="archana" style="color:#b71c1c;border-color:#ef9a9a;font-weight:700">🌸 Kunkuma Archana (' + (res.archanaStats ? res.archanaStats.count : 0) + ')</button>';
+
       document.getElementById('adminSummary').innerHTML = sumHtml;
       document.getElementById('counterTabs').innerHTML = tabsHtml;
       document.querySelectorAll('#counterTabs .tab-btn').forEach(function(btn){
@@ -683,7 +730,14 @@ function refresh(){
           renderTable();
         };
       });
-      document.getElementById('counts').innerHTML = '<b>Combined Total:</b> ' + totActive + ' active tokens' + (totVoid ? ' (' + totVoid + ' voided)' : '') + ' &bull; Total Collection: <b>₹' + totalRev.toLocaleString('en-IN') + '</b>';
+
+      var ld = res.luckyDrawStats || { count: totActive, amount: 0, void_count: totVoid };
+      var ka = res.archanaStats || { count: 0, amount: 0, void_count: 0 };
+      var pend = res.pendingStats || { count: 0, amount: 0 };
+      document.getElementById('counts').innerHTML =
+        '<b>Lucky Draw Combined:</b> ' + ld.count + ' active tokens' + (ld.void_count ? ' (' + ld.void_count + ' void)' : '') + ' &bull; Collection: <b>₹' + ld.amount.toLocaleString('en-IN') + '</b>' +
+        ' &nbsp;|&nbsp; <span style="color:#b71c1c"><b>🌸 Kunkuma Archana:</b> ' + ka.count + ' active &bull; Collection: <b>₹' + ka.amount.toLocaleString('en-IN') + '</b></span>' +
+        (pend.count > 0 ? (' &nbsp;|&nbsp; <span style="color:#d84315"><b>⏳ Pending:</b> ' + pend.count + ' tokens (₹' + pend.amount.toLocaleString('en-IN') + ')</span>') : '');
     } else {
       var myStats = res.myStats || { count: 0, amount: 0 };
       document.getElementById('counts').innerHTML = '<b>' + esc(currentUser.name || currentUser.username) + ':</b> ' + myStats.count + ' active tokens issued &bull; Collection: <b>₹' + myStats.amount.toLocaleString('en-IN') + '</b>';
@@ -783,6 +837,10 @@ document.getElementById('quantity').oninput = updateQtyPreview;
 function tokenHTML(t, copy){
   var hasPrice = (t.price && Number(t.price) > 0);
   var priceHeader = hasPrice ? (' &mdash; ₹' + t.price) : '';
+  var isArchana = (t.type_key === 'KA' || (t.type && t.type.indexOf('Archana') !== -1));
+  var subHeader = isArchana ? '2026 Kunkuma Archana' : '2026 Lucky Draw';
+  var isPending = (t.payment === 'Payment Pending' || t.payment === 'Pending');
+
   var reprintBadge = '';
   if(t.is_reprint){
     reprintBadge = '<div class="reprint-badge">*** REPRINT / DUPLICATE COPY ***</div>' +
@@ -790,13 +848,17 @@ function tokenHTML(t, copy){
       (t.reprinted_at ? '<div style="font-size:9.5px;color:#222;margin-bottom:3px">Reprinted: ' + esc(t.reprinted_at) + '</div>' : '');
   }
 
+  var pendingBanner = isPending ? '<div style="font-size:10.5px;font-weight:900;border:1.5px dashed #b00020;color:#b00020;padding:2px 0;margin:3px 0">*** PAYMENT PENDING - PLEASE COLLECT ***</div>' : '';
+  var payDisplay = isPending ? '<b style="color:#b00020">PENDING (NOT PAID)</b>' : esc(t.payment);
+
   return '<div class="token">' +
     reprintBadge +
+    pendingBanner +
     '<div class="token-header">' +
       '<img src="/logo.jpg" class="token-logo" alt="Logo">' +
       '<div class="token-header-text">' +
         '<div class="h">SVARA</div>' +
-        '<div class="sub">2026 Lucky Draw</div>' +
+        '<div class="sub">' + subHeader + '</div>' +
         '<div class="contact">Cell: +91 9848433020, +91 9885897093</div>' +
       '</div>' +
     '</div>' +
@@ -806,7 +868,7 @@ function tokenHTML(t, copy){
       (hasPrice ? '<tr><td class="label">Price:</td><td class="val"><b>₹' + t.price + '</b></td></tr>' : '') +
       '<tr><td class="label">Devotee:</td><td class="val"><b>' + esc(t.name) + '</b></td></tr>' +
       '<tr><td class="label">Mobile:</td><td class="val">' + esc(t.mobile) + '</td></tr>' +
-      '<tr><td class="label">Payment:</td><td class="val">' + esc(t.payment) + '</td></tr>' +
+      '<tr><td class="label">Payment:</td><td class="val">' + payDisplay + '</td></tr>' +
       '<tr><td class="label">Counter:</td><td class="val">' + esc(t.counter_name || 'Counter') + '</td></tr>' +
       '<tr><td class="label">Date:</td><td class="val">' + esc(t.date) + '</td></tr>' +
       '<tr><td class="label">Time:</td><td class="val">' + esc(t.time) + '</td></tr>' +
@@ -833,7 +895,7 @@ document.getElementById('issueBtn').onclick = function(){
   if(!name){ err.textContent = 'Please enter customer name.'; return; }
   if(!/^\d{10}$/.test(mobile)){ err.textContent = 'Please enter a valid 10-digit mobile number.'; return; }
   if(qty < 1 || qty > 100){ err.textContent = 'Please enter a quantity between 1 and 100.'; return; }
-  if(!payEl){ err.textContent = 'Please select a payment method: Cash or UPI.'; return; }
+  if(!payEl){ err.textContent = 'Please select a payment method: Cash, UPI, or Payment Pending.'; return; }
   err.textContent = '';
 
   busy = true;
@@ -870,7 +932,23 @@ document.getElementById('issueBtn').onclick = function(){
     showToast('✅ Saved & Issued: ' + serText + ' (' + esc(tokensList[0].name) + ')' + revToast);
 
     toChoose();
-    setTimeout(function(){ window.print(); }, 120);
+    if(bluetoothCharacteristic && res.escpos_base64){
+      try {
+        var binaryStr = atob(res.escpos_base64);
+        var bytes = new Uint8Array(binaryStr.length);
+        for(var i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        sendBluetoothBytes(bytes).then(function(){
+          showToast('🖨️ Slips printed to Bluetooth Thermal Printer with Auto-Cut!');
+        }).catch(function(e){
+          console.warn('Bluetooth print failed, opening browser print:', e);
+          setTimeout(function(){ window.print(); }, 120);
+        });
+      } catch(err) {
+        setTimeout(function(){ window.print(); }, 120);
+      }
+    } else {
+      setTimeout(function(){ window.print(); }, 120);
+    }
 
     if(res.digital_receipt){
       showDigitalReceiptModal(res.digital_receipt, tokensList[0].name, serText);
@@ -981,15 +1059,25 @@ function renderTable(){
       var serialDisplay = isVoid ? '<span class="strike"><b>' + esc(x.serial) + '</b></span>' : '<b>' + esc(x.serial) + '</b>';
       var statusBadge = isVoid ? '<span class="badge-void">VOID</span>' : '<span class="badge-active">ACTIVE</span>';
 
+      var isPending = (x.payment === 'Payment Pending' || x.payment === 'Pending');
+      var payBadge = isPending
+        ? '<span class="badge-pending" style="background:#fff3e0;color:#e65100;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #ffe082">⏳ PENDING</span>'
+        : esc(x.payment);
+
+      var isArchana = (x.type_key === 'KA' || (x.type && x.type.indexOf('Archana') !== -1));
+      var typeDisplay = isArchana
+        ? '<span style="color:#b71c1c;font-weight:700">🌸 ' + esc(x.type) + '</span>'
+        : esc(x.type);
+
       var priceBadge = (x.price && Number(x.price) > 0) ? ('<b>₹' + esc(x.price) + '</b>') : '-';
       h += '<tr' + rowClass + '>' +
         '<td>' + serialDisplay + '</td>' +
-        '<td>' + esc(x.type) + '</td>' +
+        '<td>' + typeDisplay + '</td>' +
         '<td>' + priceBadge + '</td>' +
         '<td>' + statusBadge + '</td>' +
         '<td id="cell-name-' + esc(x.serial) + '">' + esc(x.name) + '</td>' +
         '<td id="cell-mobile-' + esc(x.serial) + '">' + esc(x.mobile) + '</td>' +
-        '<td id="cell-pay-' + esc(x.serial) + '">' + esc(x.payment) + '</td>' +
+        '<td id="cell-pay-' + esc(x.serial) + '">' + payBadge + '</td>' +
         (isAdmin ? '<td>' + esc(x.counter_name || x.created_by) + '</td>' : '') +
         '<td>' + esc(x.date) + '</td>' +
         '<td>' + esc(x.time) + '</td>' +
@@ -999,6 +1087,9 @@ function renderTable(){
         h += '<button class="action-btn" style="background:#25D366;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700" onclick="resendReceipt(\'' + esc(x.serial) + '\')">📱 WhatsApp</button>' +
              '<button class="action-btn" style="background:var(--maroon);color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="triggerReprint(\'' + esc(x.serial) + '\')">🖨️ Reprint</button>' +
              '<button class="action-btn" style="background:#283593;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="directEscposPrint(\'' + esc(x.serial) + '\', true, \'Counter Reprint\')" title="Direct ESC/POS Print with Auto-Cutter">⚡ ESC/POS</button>';
+        if(isPending){
+          h += '<button class="action-btn" style="background:#2e7d32;color:#fff;border:none;padding:3px 7px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:700;margin-left:4px" onclick="openMarkPaidModal(\'' + esc(x.serial) + '\', \'' + esc(x.name) + '\', ' + (x.price || 0) + ')">💰 Mark Paid</button>';
+        }
       }
 
       if(isAdmin){
@@ -1033,6 +1124,8 @@ function openEditModal(serial, name, mobile, pay){
 
   if(pay === 'UPI'){
     document.getElementById('editPayUPI').checked = true;
+  } else if(pay === 'Payment Pending' || pay === 'Pending'){
+    document.getElementById('editPayPending').checked = true;
   } else {
     document.getElementById('editPayCash').checked = true;
   }
@@ -1040,6 +1133,56 @@ function openEditModal(serial, name, mobile, pay){
   document.getElementById('editModal').classList.remove('hidden');
   document.getElementById('editName').focus();
 }
+
+/* =========================================================
+   MARK AS PAID MODAL
+   ========================================================= */
+
+var activeMarkPaidSerial = null;
+function openMarkPaidModal(serial, name, price){
+  activeMarkPaidSerial = serial;
+  document.getElementById('markPaidSerial').textContent = serial;
+  document.getElementById('markPaidDetails').innerHTML = 'Devotee: <b>' + esc(name) + '</b> &bull; Amount: <b>₹' + price + '</b>';
+  document.getElementById('markPaidErr').textContent = '';
+  document.getElementById('markPaidModal').classList.remove('hidden');
+}
+
+function closeMarkPaidModal(){
+  document.getElementById('markPaidModal').classList.add('hidden');
+  activeMarkPaidSerial = null;
+}
+
+document.getElementById('markPaidModalClose').onclick = closeMarkPaidModal;
+document.getElementById('markPaidCancelBtn').onclick = closeMarkPaidModal;
+
+document.getElementById('markPaidSubmitBtn').onclick = function(){
+  if(!activeMarkPaidSerial) return;
+  var selPay = document.querySelector('input[name="markPaidPay"]:checked');
+  var payVal = selPay ? selPay.value : 'Cash';
+  var err = document.getElementById('markPaidErr');
+  err.textContent = '';
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = 'Updating Payment...';
+
+  api('/api/tokens/' + encodeURIComponent(activeMarkPaidSerial) + '/mark-paid', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment: payVal })
+  })
+  .then(function(res){
+    closeMarkPaidModal();
+    showToast('✅ Payment updated: Token ' + activeMarkPaidSerial + ' marked as ' + payVal + '!');
+    refresh();
+  })
+  .catch(function(e){
+    err.textContent = e.message;
+  })
+  .then(function(){
+    btn.disabled = false;
+    btn.textContent = '✅ Confirm Payment Collected';
+  });
+};
 
 function closeEditModal(){
   document.getElementById('editModal').classList.add('hidden');
@@ -1154,6 +1297,128 @@ document.getElementById('xlsBtn').onclick = function(){
   window.location.href = url;
 };
 
+var xlsArchBtn = document.getElementById('xlsArchanaBtn');
+if(xlsArchBtn){
+  xlsArchBtn.onclick = function(){
+    window.location.href = '/api/export/kunkuma-archana';
+  };
+}
+
+/* =========================================================
+   MOBILE & BLUETOOTH THERMAL PRINTER ENGINE
+   ========================================================= */
+
+var bluetoothDevice = null;
+var bluetoothCharacteristic = null;
+
+function connectBluetoothPrinter(){
+  if(!navigator.bluetooth){
+    alert('Web Bluetooth is supported in Chrome on Android, Windows, Mac, and Linux.\n\nFor Android devices, you can also use "⚡ RawBT Print" directly to connect any Bluetooth or USB thermal printer without browser pairing.');
+    return Promise.reject(new Error('Web Bluetooth not supported'));
+  }
+  showToast('🔍 Searching for nearby Bluetooth Thermal Printers...');
+  return navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [
+      '000018f0-0000-1000-8000-00805f9b34fb',
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+      0xffe0,
+      0xfee7,
+      0x18f0
+    ]
+  })
+  .then(function(device){
+    bluetoothDevice = device;
+    showToast('Connecting to ' + (device.name || 'Printer') + '...');
+    return device.gatt.connect();
+  })
+  .then(function(server){
+    return server.getPrimaryServices();
+  })
+  .then(function(services){
+    var findChar = function(idx){
+      if(idx >= services.length){
+        throw new Error('No writable thermal printer characteristic found on this Bluetooth device.');
+      }
+      return services[idx].getCharacteristics().then(function(chars){
+        for(var i = 0; i < chars.length; i++){
+          var c = chars[i];
+          if(c.properties.write || c.properties.writeWithoutResponse){
+            bluetoothCharacteristic = c;
+            return c;
+          }
+        }
+        return findChar(idx + 1);
+      });
+    };
+    return findChar(0);
+  })
+  .then(function(){
+    var btn = document.getElementById('btConnectBtn');
+    if(btn){
+      btn.style.color = '#1b5e20';
+      btn.style.borderColor = '#2e7d32';
+      btn.style.background = '#e8f5e9';
+      btn.innerHTML = '🟢 BT: ' + esc(bluetoothDevice.name || 'Connected');
+    }
+    showToast('✅ Bluetooth Thermal Printer Connected: ' + (bluetoothDevice.name || 'Printer'));
+  })
+  .catch(function(err){
+    console.error('Bluetooth connection failed:', err);
+    if(err.name !== 'NotFoundError'){
+      alert('Bluetooth connection: ' + err.message);
+    }
+  });
+}
+
+function sendBluetoothBytes(bytes){
+  if(!bluetoothCharacteristic){
+    return Promise.reject(new Error('Bluetooth printer not connected'));
+  }
+  var CHUNK_SIZE = 512;
+  var offset = 0;
+  function writeChunk(){
+    if(offset >= bytes.length){
+      return Promise.resolve();
+    }
+    var slice = bytes.slice(offset, offset + CHUNK_SIZE);
+    offset += CHUNK_SIZE;
+    return bluetoothCharacteristic.writeValue(slice).then(function(){
+      return new Promise(function(r){ setTimeout(r, 25); });
+    }).then(writeChunk);
+  }
+  return writeChunk();
+}
+
+function printViaRawBT(base64Data){
+  window.location.href = 'rawbt:data:base64,' + base64Data;
+}
+
+var btBtn = document.getElementById('btConnectBtn');
+if(btBtn){
+  btBtn.onclick = function(){
+    connectBluetoothPrinter();
+  };
+}
+
+var syncBtn = document.getElementById('syncCountersBtn');
+if(syncBtn){
+  syncBtn.onclick = function(){
+    showToast('🔄 Synchronizing all counter balances and active tokens...');
+    refresh().then(function(){
+      showToast('✅ Counter synchronization complete!');
+    });
+  };
+}
+
+// Live real-time counter synchronization interval (every 3.5 seconds)
+setInterval(function(){
+  if(currentUser && !busy){
+    refresh();
+  }
+}, 3500);
+
 document.getElementById('backupDbBtn').onclick = function(){
   window.location.href = '/api/backup/db';
 };
@@ -1263,6 +1528,7 @@ document.getElementById('reprintFindBtn').onclick = function(){
   var prev = document.getElementById('reprintPreviewArea');
   var execBtn = document.getElementById('reprintExecuteBtn');
   var escposBtn = document.getElementById('reprintEscposBtn');
+  var rawbtBtn = document.getElementById('reprintRawbtBtn');
   var binBtn = document.getElementById('reprintDownloadBinBtn');
   if(!q){
     err.textContent = 'Please enter a serial or mobile number.';
@@ -1280,6 +1546,7 @@ document.getElementById('reprintFindBtn').onclick = function(){
         prev.classList.add('hidden');
         execBtn.disabled = true;
         if(escposBtn) escposBtn.disabled = true;
+        if(rawbtBtn) rawbtBtn.disabled = true;
         if(binBtn) binBtn.disabled = true;
         activeReprintToken = null;
         return;
@@ -1292,6 +1559,7 @@ document.getElementById('reprintFindBtn').onclick = function(){
         prev.classList.remove('hidden');
         execBtn.disabled = false;
         if(escposBtn) escposBtn.disabled = false;
+        if(rawbtBtn) rawbtBtn.disabled = false;
         if(binBtn) binBtn.disabled = false;
       } else {
         var h = '<div style="font-weight:700;color:var(--maroon);margin-bottom:6px">Multiple Tokens Found (' + res.results.length + '):</div>';
@@ -1305,6 +1573,7 @@ document.getElementById('reprintFindBtn').onclick = function(){
         prev.classList.remove('hidden');
         execBtn.disabled = true;
         if(escposBtn) escposBtn.disabled = true;
+        if(rawbtBtn) rawbtBtn.disabled = true;
         if(binBtn) binBtn.disabled = true;
       }
     })
@@ -1336,6 +1605,23 @@ if(document.getElementById('reprintEscposBtn')){
   };
 }
 
+if(document.getElementById('reprintRawbtBtn')){
+  document.getElementById('reprintRawbtBtn').onclick = function(){
+    if(!activeReprintToken) return;
+    var reason = document.getElementById('reprintReason').value;
+    api('/api/tokens/' + encodeURIComponent(activeReprintToken.serial) + '/escpos?reprint=true&reason=' + encodeURIComponent(reason))
+      .then(function(res){
+        if(res.escpos_base64){
+          printViaRawBT(res.escpos_base64);
+          closeReprintModal();
+        }
+      })
+      .catch(function(err){
+        alert('RawBT error: ' + err.message);
+      });
+  };
+}
+
 if(document.getElementById('reprintDownloadBinBtn')){
   document.getElementById('reprintDownloadBinBtn').onclick = function(){
     if(!activeReprintToken) return;
@@ -1345,6 +1631,29 @@ if(document.getElementById('reprintDownloadBinBtn')){
 }
 
 function directEscposPrint(serial, isReprint, reason){
+  if(bluetoothCharacteristic){
+    showToast('⏳ Printing to Bluetooth Thermal Printer with Auto-Cutter...');
+    api('/api/tokens/' + encodeURIComponent(serial) + '/escpos?reprint=' + (isReprint ? 'true' : 'false') + '&reason=' + encodeURIComponent(reason || ''))
+      .then(function(res){
+        if(res.escpos_base64){
+          var binaryStr = atob(res.escpos_base64);
+          var bytes = new Uint8Array(binaryStr.length);
+          for(var i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+          return sendBluetoothBytes(bytes);
+        }
+      })
+      .then(function(){
+        showToast('✅ Printed to Bluetooth thermal printer with Auto-Cutter!');
+        if(isReprint) closeReprintModal();
+      })
+      .catch(function(err){
+        console.warn('Bluetooth direct print error:', err);
+        alert('Bluetooth error: ' + err.message + '\n\nOpening print dialog.');
+        if(isReprint) triggerReprint(serial, reason); else window.print();
+      });
+    return;
+  }
+
   var sel = document.getElementById('printerSelect');
   var pName = sel ? sel.value : '';
   showToast('⏳ Sending ESC/POS commands with Auto-Cutter to printer...');
@@ -1560,10 +1869,24 @@ function renderShiftReport(rep){
       '<td><b>₹' + c.total_amount.toLocaleString('en-IN') + '</b></td>' +
       '</tr>';
   });
+
+  if(rep.kunkuma_archana){
+    var ka = rep.kunkuma_archana;
+    bodyHtml += '<tr style="background:#fff8f8;border-top:2px solid #b71c1c">' +
+      '<td><b style="color:#b71c1c">🌸 ' + esc(ka.label) + '</b> (' + esc(ka.prefix) + ')</td>' +
+      '<td>₹' + ka.unit_price + '</td>' +
+      '<td><b style="color:var(--green)">' + ka.active_count + '</b></td>' +
+      '<td>' + (ka.void_count ? ('<span style="color:var(--red)">' + ka.void_count + '</span>') : '0') + '</td>' +
+      '<td>' + ka.total_count + '</td>' +
+      '<td>₹' + ka.cash_amount.toLocaleString('en-IN') + '</td>' +
+      '<td>₹' + ka.upi_amount.toLocaleString('en-IN') + '</td>' +
+      '<td><b style="color:#b71c1c">₹' + ka.total_amount.toLocaleString('en-IN') + '</b></td>' +
+      '</tr>';
+  }
   document.getElementById('reportTableBody').innerHTML = bodyHtml;
 
   var footHtml = '<tr>' +
-    '<td><b>GRAND TOTALS</b></td>' +
+    '<td><b>LUCKY DRAW TOTALS</b></td>' +
     '<td>-</td>' +
     '<td><b>' + (gt.active_count || 0) + '</b></td>' +
     '<td><b>' + (gt.void_count || 0) + '</b></td>' +
@@ -1606,7 +1929,7 @@ document.getElementById('printReportBtn').onclick = function(){
     '<div>Generated: ' + esc(rep.generated_at) + '</div>' +
     '<div>Clerk: ' + esc(rep.generated_by) + '</div>' +
     '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">' +
-    '<div style="font-weight:700;margin-bottom:4px">ITEMIZED INVENTORY:</div>';
+    '<div style="font-weight:700;margin-bottom:4px">LUCKY DRAW INVENTORY:</div>';
 
   (rep.categories || []).forEach(function(c){
     html += '<div style="margin-bottom:4px">' +
@@ -1617,13 +1940,22 @@ document.getElementById('printReportBtn').onclick = function(){
   });
 
   html += '<hr style="border:none;border-top:1px solid #000;margin:6px 0">' +
-    '<div style="font-size:14px;font-weight:700">GRAND TOTALS:</div>' +
+    '<div style="font-size:14px;font-weight:700">LUCKY DRAW GRAND TOTALS:</div>' +
     '<div>Active Tokens: <b>' + (gt.active_count || 0) + '</b></div>' +
     '<div>Void Tokens: <b>' + (gt.void_count || 0) + '</b></div>' +
     '<div>Cash Collection: <b>₹' + (gt.cash_amount || 0).toLocaleString('en-IN') + '</b></div>' +
     '<div>UPI Collection: <b>₹' + (gt.upi_amount || 0).toLocaleString('en-IN') + '</b></div>' +
-    '<div style="font-size:15px;margin-top:4px">TOTAL REVENUE: <b>₹' + (gt.total_amount || 0).toLocaleString('en-IN') + '</b></div>' +
-    '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">' +
+    '<div style="font-size:15px;margin-top:4px">TOTAL REVENUE: <b>₹' + (gt.total_amount || 0).toLocaleString('en-IN') + '</b></div>';
+
+  if(rep.kunkuma_archana){
+    var ka = rep.kunkuma_archana;
+    html += '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">' +
+      '<div style="font-weight:700;margin-bottom:4px">🌸 KUNKUMA ARCHANA (SEPARATE):</div>' +
+      '<div>Active: <b>' + ka.active_count + '</b> &bull; Total: <b>₹' + ka.total_amount.toLocaleString('en-IN') + '</b></div>' +
+      '<div>Cash: ₹' + ka.cash_amount.toLocaleString('en-IN') + ' | UPI: ₹' + ka.upi_amount.toLocaleString('en-IN') + '</div>';
+  }
+
+  html += '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">' +
     '<div style="text-align:center;font-size:10px;margin-top:6px">*** END OF OFFICIAL REPORT ***</div>' +
     '</div>';
 

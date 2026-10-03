@@ -10,23 +10,24 @@ CREATE TABLE IF NOT EXISTS counters (
 );
 
 INSERT OR IGNORE INTO counters (type_key, label, prefix, last_no) VALUES
-    ('RE', 'Royal Enfield', 'B',  0),
-    ('SI', 'Silver',        'S',  0),
-    ('SA', 'Saree',         'SA', 0);
+    ('RE', 'Royal Enfield',   'B',  0),
+    ('SI', 'Silver',          'S',  0),
+    ('SA', 'Saree',           'SA', 0),
+    ('KA', 'Kunkuma Archana', 'KA', 0);
 
 -- Every issued token with price, status, and counter identification.
 CREATE TABLE IF NOT EXISTS tokens (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    serial        TEXT NOT NULL UNIQUE,    -- B00001, S00001, SA00001 ...
+    serial        TEXT NOT NULL UNIQUE,    -- B00001, S00001, SA00001, KA00001 ...
     type_key      TEXT NOT NULL REFERENCES counters(type_key),
-    token_type    TEXT NOT NULL,           -- Royal Enfield / Silver / Saree
+    token_type    TEXT NOT NULL,           -- Royal Enfield / Silver / Saree / Kunkuma Archana
     price         INTEGER NOT NULL DEFAULT 0,
     status        TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / VOID
     voided_at     TEXT,
     voided_by     TEXT,
     name          TEXT NOT NULL,
     mobile        TEXT NOT NULL,
-    payment       TEXT NOT NULL CHECK (payment IN ('Cash', 'UPI')),
+    payment       TEXT NOT NULL CHECK (payment IN ('Cash', 'UPI', 'Payment Pending', 'Pending')),
     created_by    TEXT NOT NULL DEFAULT 'admin',
     counter_name  TEXT NOT NULL DEFAULT 'Main Counter',
     created_date  TEXT NOT NULL,           -- dd/mm/yyyy

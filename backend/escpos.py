@@ -95,8 +95,13 @@ def generate_receipt_text(token: dict, copy_label: str = "CUSTOMER COPY", is_rep
     """
     lines = []
     lines.append(divider("="))
-    lines.append(pad_center("SVARA 2026 LUCKY DRAW"))
-    lines.append(pad_center("Official Token Receipt"))
+    cat_name = token.get("type", token.get("token_type", "Token")).upper()
+    is_archana = (token.get("type_key") == "KA" or "KUNKUMA" in cat_name)
+    header_title = "SVARA 2026 KUNKUMA ARCHANA" if is_archana else "SVARA 2026 LUCKY DRAW"
+    sub_title = "Special Archana Seva Receipt" if is_archana else "Official Token Receipt"
+
+    lines.append(pad_center(header_title))
+    lines.append(pad_center(sub_title))
     lines.append(pad_center("Cell: +91 9848433020, 9885897093"))
     lines.append(divider("-"))
 
@@ -109,7 +114,6 @@ def generate_receipt_text(token: dict, copy_label: str = "CUSTOMER COPY", is_rep
             lines.append(pad_key_val("Reprinted", reprint_time))
         lines.append(divider("-"))
 
-    cat_name = token.get("type", token.get("token_type", "Token")).upper()
     price = token.get("price", 0)
     cat_str = f"{cat_name} - Rs. {price}" if price and int(price) > 0 else cat_name
     lines.append(pad_center(cat_str))
@@ -128,7 +132,10 @@ def generate_receipt_text(token: dict, copy_label: str = "CUSTOMER COPY", is_rep
 
     lines.append(pad_key_val("Devotee Name", name))
     lines.append(pad_key_val("Mobile No", mobile))
-    lines.append(pad_key_val("Payment Mode", payment))
+    pay_display = "PENDING (NOT PAID)" if payment in ("Payment Pending", "Pending") else payment
+    lines.append(pad_key_val("Payment Mode", pay_display))
+    if payment in ("Payment Pending", "Pending"):
+        lines.append(pad_center("*** PAYMENT PENDING - PLEASE COLLECT ***"))
     lines.append(pad_key_val("Counter", counter))
     lines.append(pad_sides(f"Date: {date_val}", f"Time: {time_val}"))
     lines.append(divider("-"))
@@ -145,7 +152,7 @@ def generate_escpos_slip(token: dict, copy_label: str = "CUSTOMER COPY", is_repr
     """
     Generates raw ESC/POS binary stream for an 80mm thermal receipt printer.
     Strictly formatted to 48 columns (Font A, 576 dots printable area).
-    Appends standard paper cut command at the end of the slip to trigger the auto-cutter.
+    Appends standard paper cut command at the end of each slip to trigger the auto-cutter.
     """
     out = bytearray()
 
@@ -157,11 +164,16 @@ def generate_escpos_slip(token: dict, copy_label: str = "CUSTOMER COPY", is_repr
     out.extend(ALIGN_CENTER)
     out.extend(BOLD_ON)
     out.extend(SIZE_DOUBLE_HEIGHT)
-    out.extend(b"SVARA 2026 LUCKY DRAW\n")
+    cat_name = token.get("type", token.get("token_type", "Token")).upper()
+    is_archana = (token.get("type_key") == "KA" or "KUNKUMA" in cat_name)
+    header_title = "SVARA 2026 KUNKUMA ARCHANA" if is_archana else "SVARA 2026 LUCKY DRAW"
+    sub_title = "Special Archana Seva Receipt" if is_archana else "Official Token Receipt"
+
+    out.extend(f"{header_title}\n".encode("ascii", "replace"))
     out.extend(SIZE_NORMAL)
     out.extend(BOLD_OFF)
 
-    out.extend(b"Official Token Receipt\n")
+    out.extend(f"{sub_title}\n".encode("ascii", "replace"))
     out.extend(b"Cell: +91 9848433020, 9885897093\n")
     out.extend(divider("-").encode("ascii", "replace") + b"\n")
 
@@ -181,7 +193,6 @@ def generate_escpos_slip(token: dict, copy_label: str = "CUSTOMER COPY", is_repr
 
     # 4. Category & Price
     out.extend(BOLD_ON)
-    cat_name = token.get("type", token.get("token_type", "Token")).upper()
     price = token.get("price", 0)
     cat_str = f"{cat_name} - Rs. {price}" if price and int(price) > 0 else cat_name
     out.extend(pad_center(cat_str).encode("ascii", "replace") + b"\n")
@@ -208,7 +219,12 @@ def generate_escpos_slip(token: dict, copy_label: str = "CUSTOMER COPY", is_repr
 
     out.extend(pad_key_val("Devotee Name", name).encode("ascii", "replace") + b"\n")
     out.extend(pad_key_val("Mobile No", mobile).encode("ascii", "replace") + b"\n")
-    out.extend(pad_key_val("Payment Mode", payment).encode("ascii", "replace") + b"\n")
+    pay_display = "PENDING (NOT PAID)" if payment in ("Payment Pending", "Pending") else payment
+    out.extend(pad_key_val("Payment Mode", pay_display).encode("ascii", "replace") + b"\n")
+    if payment in ("Payment Pending", "Pending"):
+        out.extend(BOLD_ON)
+        out.extend(pad_center("*** PAYMENT PENDING - PLEASE COLLECT ***").encode("ascii", "replace") + b"\n")
+        out.extend(BOLD_OFF)
     out.extend(pad_key_val("Counter", counter).encode("ascii", "replace") + b"\n")
     out.extend(pad_sides(f"Date: {date_val}", f"Time: {time_val}").encode("ascii", "replace") + b"\n")
     out.extend(divider("-").encode("ascii", "replace") + b"\n")
@@ -226,30 +242,31 @@ def generate_escpos_slip(token: dict, copy_label: str = "CUSTOMER COPY", is_repr
     out.extend(pad_center(f"[ {copy_label.upper()} ]").encode("ascii", "replace") + b"\n")
     out.extend(BOLD_OFF)
 
-    # 9. ESC/POS & Auto-Cutter Integration:
-    # Feed 4 lines to clear the physical cutter blade, then trigger cut command
-    if cut_mode == "full":
-        out.extend(CUT_FULL)
-    elif cut_mode == "partial":
-        out.extend(CUT_PARTIAL)
+    # 9. Dual-Slip Hardware Auto-Cutter Integration:
+    # Feed 4 blank lines to ensure text advances completely past the physical knife blade
+    out.extend(b"\n\n\n\n")
+    # Trigger ESC/POS paper cut command (GS V 0) for ATPOS AT-301 and standard 80mm thermal printers
+    if cut_mode == "partial":
+        out.extend(b"\x1d\x56\x01")  # GS V 1 (Partial cut)
+    elif cut_mode == "feed_cut":
+        out.extend(b"\x1d\x56\x42\x00")  # GS V 66 0 (Feed and cut)
     else:
-        # Standard auto-cut for ATPOS AT-301 / Epson / POS-80 printers
-        out.extend(CUT_FEED_PARTIAL)
-        # Fallback cut code for printers expecting GS V 0 or GS V 1
-        out.extend(GS + b"V\x00")
+        out.extend(b"\x1d\x56\x00")  # GS V 0 (Standard Full cut)
 
     return bytes(out)
 
 
 def generate_escpos_stream_for_token(token: dict, include_office_copy: bool = True, is_reprint: bool = False, cut_mode: str = "auto") -> bytes:
     """
-    Generates complete raw ESC/POS stream for a token:
-    Customer Copy (with auto-cut) + Office Copy (with auto-cut).
+    Generates complete raw ESC/POS stream for a transaction:
+    Slip 1: Customer Copy (ends with Auto-Cutter command)
+    Slip 2: Office Copy (ends with Auto-Cutter command)
+    Ensures the printer cleanly cuts both slips individually.
     """
     stream = bytearray()
-    # 1. Customer Copy
+    # 1. Customer Copy -> Cut
     stream.extend(generate_escpos_slip(token, copy_label="CUSTOMER COPY", is_reprint=is_reprint, cut_mode=cut_mode))
-    # 2. Office Copy (if requested)
+    # 2. Office Copy -> Cut
     if include_office_copy:
         stream.extend(generate_escpos_slip(token, copy_label="OFFICE / COUNTER COPY", is_reprint=is_reprint, cut_mode=cut_mode))
     return bytes(stream)
