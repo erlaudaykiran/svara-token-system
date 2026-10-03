@@ -1374,13 +1374,15 @@ def create_token(user):
             "mobile": mobile
         }
 
-    # Generate individual ESC/POS byte streams with Auto-Cutter for each token (Customer & Office copies)
+    # Generate individual ESC/POS byte streams with Auto-Cutter for EVERY slip
+    # (Customer Copy -> Auto Cut -> Office Copy -> Auto Cut)
     raw_escpos_all = bytearray()
     tokens_escpos = []
     for t in created_tokens:
-        t_stream = escpos.generate_escpos_stream_for_token(t, include_office_copy=True, is_reprint=False)
-        raw_escpos_all.extend(t_stream)
-        tokens_escpos.append(base64.b64encode(t_stream).decode("ascii"))
+        slips = escpos.generate_escpos_slips_for_token(t, include_office_copy=True, is_reprint=False)
+        for s in slips:
+            raw_escpos_all.extend(s)
+            tokens_escpos.append(base64.b64encode(s).decode("ascii"))
     escpos_bytes = bytes(raw_escpos_all)
     escpos_b64 = base64.b64encode(escpos_bytes).decode("ascii")
     escpos_text = "\n\n".join([escpos.generate_receipt_text(t) for t in created_tokens])
@@ -1618,7 +1620,9 @@ def reprint_token(user):
         matched_token["timestamp"] = now_iso
 
         # Format receipt using raw ESC/POS commands with Auto-Cutter for 80mm thermal printer
-        escpos_bytes = escpos.generate_escpos_stream_for_token(matched_token, include_office_copy=True, is_reprint=True)
+        slips = escpos.generate_escpos_slips_for_token(matched_token, include_office_copy=True, is_reprint=True)
+        tokens_escpos = [base64.b64encode(s).decode("ascii") for s in slips]
+        escpos_bytes = b"".join(slips)
         escpos_b64 = base64.b64encode(escpos_bytes).decode("ascii")
         escpos_text = escpos.generate_receipt_text(matched_token, is_reprint=True)
 
@@ -1626,6 +1630,7 @@ def reprint_token(user):
             success=True,
             reprint=True,
             token=matched_token,
+            tokens_escpos=tokens_escpos,
             reprinted_at=reprinted_human,
             timestamp=now_iso,
             clerk_id=user["username"],
@@ -1698,7 +1703,9 @@ def get_token_escpos(user, id_or_serial):
             t["reprint_reason"] = reason
             t["reprinted_at"] = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
 
-        raw_bytes = escpos.generate_escpos_stream_for_token(t, include_office_copy=True, is_reprint=is_reprint)
+        slips = escpos.generate_escpos_slips_for_token(t, include_office_copy=True, is_reprint=is_reprint)
+        tokens_escpos = [base64.b64encode(s).decode("ascii") for s in slips]
+        raw_bytes = b"".join(slips)
         text_preview = escpos.generate_receipt_text(t, is_reprint=is_reprint)
 
         if fmt in ("download", "bin", "raw"):
@@ -1715,6 +1722,7 @@ def get_token_escpos(user, id_or_serial):
                 "success": True,
                 "serial": t["serial"],
                 "is_reprint": is_reprint,
+                "tokens_escpos": tokens_escpos,
                 "escpos_base64": base64.b64encode(raw_bytes).decode("ascii"),
                 "escpos_text": text_preview,
                 "byte_count": len(raw_bytes)
@@ -1729,6 +1737,7 @@ def print_token_escpos(user):
     """
     Directly dispatches raw ESC/POS commands with auto-cutter to a connected
     80mm thermal receipt printer (e.g. ATPOS AT-301 via USB spooler or TCP network).
+    Ensures auto-cut is executed between Customer Copy and Office Copy.
     """
     data = request.get_json(silent=True) or {}
     query = str(data.get("query", data.get("serial", ""))).strip()
@@ -1788,9 +1797,10 @@ def print_token_escpos(user):
         raw_bytes_all = bytearray()
         tokens_escpos = []
         for m in matched_tokens:
-            s_bytes = escpos.generate_escpos_stream_for_token(m, include_office_copy=True, is_reprint=is_reprint)
-            raw_bytes_all.extend(s_bytes)
-            tokens_escpos.append(base64.b64encode(s_bytes).decode("ascii"))
+            slips = escpos.generate_escpos_slips_for_token(m, include_office_copy=True, is_reprint=is_reprint)
+            for s in slips:
+                raw_bytes_all.extend(s)
+                tokens_escpos.append(base64.b64encode(s).decode("ascii"))
 
         return jsonify({
             "success": ok,

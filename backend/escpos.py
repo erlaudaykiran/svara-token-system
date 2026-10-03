@@ -268,20 +268,42 @@ def generate_escpos_slip(token: dict, copy_label: str = "CUSTOMER COPY", is_repr
     return bytes(out)
 
 
+def generate_escpos_slips_for_token(token: dict, include_office_copy: bool = True, is_reprint: bool = False, cut_mode: str = "full") -> list:
+    """
+    Generates itemized raw ESC/POS binary streams for an individual token:
+    Slip 1: Customer Copy (ends with Auto-Cutter command)
+    Slip 2 (optional): Office Copy (ends with Auto-Cutter command)
+    Returns [customer_slip_bytes, office_slip_bytes] so that an auto-cut
+    and buffer delay are cleanly executed in between Customer Copy and Office Copy.
+    """
+    slips = []
+    # 1. Customer Copy (ends with hardware auto-cut)
+    slips.append(generate_escpos_slip(token, copy_label="CUSTOMER COPY", is_reprint=is_reprint, cut_mode=cut_mode))
+    # 2. Office Copy (ends with hardware auto-cut)
+    if include_office_copy:
+        slips.append(generate_escpos_slip(token, copy_label="OFFICE / COUNTER COPY", is_reprint=is_reprint, cut_mode=cut_mode))
+    return slips
+
+
+def generate_escpos_all_slips(tokens_list: list, include_office_copy: bool = True, is_reprint: bool = False, cut_mode: str = "full") -> list:
+    """
+    Generates an itemized list of all individual slips for all tokens in sequence.
+    Every slip (Customer Copy and Office Copy) is an independent stream with an auto-cut command:
+    [Token 1 Customer Copy, Token 1 Office Copy, Token 2 Customer Copy, Token 2 Office Copy, ...]
+    """
+    all_slips = []
+    for t in tokens_list:
+        all_slips.extend(generate_escpos_slips_for_token(t, include_office_copy=include_office_copy, is_reprint=is_reprint, cut_mode=cut_mode))
+    return all_slips
+
+
 def generate_escpos_stream_for_token(token: dict, include_office_copy: bool = True, is_reprint: bool = False, cut_mode: str = "full") -> bytes:
     """
     Generates complete raw ESC/POS stream for an individual token:
-    Slip 1: Customer Copy (ends with Auto-Cutter command)
-    Slip 2: Office Copy (ends with Auto-Cutter command)
-    Ensures the printer cleanly cuts each slip individually.
+    Customer Copy (with auto-cut) + Office Copy (with auto-cut).
     """
-    stream = bytearray()
-    # 1. Customer Copy -> Auto-Cut
-    stream.extend(generate_escpos_slip(token, copy_label="CUSTOMER COPY", is_reprint=is_reprint, cut_mode=cut_mode))
-    # 2. Office Copy -> Auto-Cut
-    if include_office_copy:
-        stream.extend(generate_escpos_slip(token, copy_label="OFFICE / COUNTER COPY", is_reprint=is_reprint, cut_mode=cut_mode))
-    return bytes(stream)
+    slips = generate_escpos_slips_for_token(token, include_office_copy=include_office_copy, is_reprint=is_reprint, cut_mode=cut_mode)
+    return b"".join(slips)
 
 
 def generate_escpos_streams_for_tokens(tokens_list: list, include_office_copy: bool = True, is_reprint: bool = False, cut_mode: str = "full") -> list:
@@ -370,10 +392,10 @@ def print_tokens_with_autocut(
 ) -> tuple:
     """
     Unified reusable print-and-cut execution engine.
-    Ensures EVERY individual token is physically separated by an auto-cut:
-      Token 001 -> AUTO CUT -> Token 002 -> AUTO CUT -> Token 003 -> AUTO CUT
-    Prevents printing multiple tokens as one continuous uncut strip.
-    Handles printer buffer and print completion delays between tokens to prevent paper jams.
+    Ensures EVERY individual slip is physically separated by an auto-cut:
+      Token Customer Copy -> AUTO CUT -> Token Office Copy -> AUTO CUT
+    Prevents printing multiple tokens or slips as one continuous uncut strip.
+    Handles printer buffer and physical cutter completion delays (0.35s) between slips.
     Uses thread-safe locking to prevent overlapping print jobs.
     """
     if not tokens_list:
@@ -382,6 +404,17 @@ def print_tokens_with_autocut(
     # Normalize if a single token dict was passed
     if isinstance(tokens_list, dict):
         tokens_list = [tokens_list]
+
+    # Build sequence of individual slips:
+    # Each item is (doc_label, slip_bytes)
+    # 1. Customer Copy -> Hardware Auto-Cut
+    # 2. Office Copy -> Hardware Auto-Cut
+    all_slips = []
+    for t in tokens_list:
+        ser = t.get("serial", "Token")
+        all_slips.append((f"{ser}_Customer", generate_escpos_slip(t, copy_label="CUSTOMER COPY", is_reprint=is_reprint, cut_mode=cut_mode)))
+        if include_office_copy:
+            all_slips.append((f"{ser}_Office", generate_escpos_slip(t, copy_label="OFFICE / COUNTER COPY", is_reprint=is_reprint, cut_mode=cut_mode)))
 
     with _printer_lock:
         # 1. TCP Network Printer (Ethernet / Wi-Fi thermal printer)
@@ -392,16 +425,15 @@ def print_tokens_with_autocut(
                 s.settimeout(7.0)
                 s.connect((target_host, port))
                 try:
-                    for idx, t in enumerate(tokens_list):
-                        token_bytes = generate_escpos_stream_for_token(t, include_office_copy=include_office_copy, is_reprint=is_reprint, cut_mode=cut_mode)
-                        s.sendall(token_bytes)
-                        # Wait for printer buffer and auto-cutter blade completion before processing next token
-                        if idx < len(tokens_list) - 1:
+                    for idx, (label, slip_bytes) in enumerate(all_slips):
+                        s.sendall(slip_bytes)
+                        # Wait for printer buffer and auto-cutter knife completion between slips
+                        if idx < len(all_slips) - 1:
                             time.sleep(inter_token_delay)
                 finally:
                     s.close()
                 count = len(tokens_list)
-                return True, f"Printed {count} token{'s' if count > 1 else ''} with auto-cutter to {target_host}:{port}."
+                return True, f"Printed {count} token{'s' if count > 1 else ''} ({len(all_slips)} slips) with auto-cut between Customer and Office copies to {target_host}:{port}."
             except Exception as e:
                 return False, f"Network printer error ({target_host}:{port}): {e}"
 
@@ -421,26 +453,25 @@ def print_tokens_with_autocut(
 
                 hprinter = win32print.OpenPrinter(target)
                 try:
-                    for idx, t in enumerate(tokens_list):
-                        token_bytes = generate_escpos_stream_for_token(t, include_office_copy=include_office_copy, is_reprint=is_reprint, cut_mode=cut_mode)
-                        doc_name = f"SVARA_Token_{t.get('serial', idx+1)}"
-                        # Individual document job ensures driver flushes buffer and executes cut
+                    for idx, (label, slip_bytes) in enumerate(all_slips):
+                        doc_name = f"SVARA_{label}"
+                        # Individual document job ensures driver flushes buffer and executes cut between Customer and Office copies
                         hjob = win32print.StartDocPrinter(hprinter, 1, (doc_name, None, "RAW"))
                         try:
                             win32print.StartPagePrinter(hprinter)
-                            win32print.WritePrinter(hprinter, token_bytes)
+                            win32print.WritePrinter(hprinter, slip_bytes)
                             win32print.EndPagePrinter(hprinter)
                         finally:
                             win32print.EndDocPrinter(hprinter)
 
-                        # Wait for printer buffer & physical knife completion before sending next token
-                        if idx < len(tokens_list) - 1:
+                        # Wait for printer buffer & physical knife completion between Customer Copy and Office Copy
+                        if idx < len(all_slips) - 1:
                             time.sleep(inter_token_delay)
                 finally:
                     win32print.ClosePrinter(hprinter)
 
                 count = len(tokens_list)
-                return True, f"Printed {count} token{'s' if count > 1 else ''} with individual auto-cutter to '{target}'."
+                return True, f"Printed {count} token{'s' if count > 1 else ''} ({len(all_slips)} slips) with auto-cut between Customer and Office copies to '{target}'."
             except Exception as e:
                 return False, f"Windows printer error ({target}): {e}"
 

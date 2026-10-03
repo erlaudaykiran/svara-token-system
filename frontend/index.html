@@ -936,7 +936,7 @@ document.getElementById('issueBtn').onclick = function(){
     if(bluetoothCharacteristic && (res.tokens_escpos || res.escpos_base64)){
       var listToPrint = (res.tokens_escpos && res.tokens_escpos.length) ? res.tokens_escpos : [res.escpos_base64];
       printTokensViaBluetooth(listToPrint).then(function(){
-        showToast('🖨️ All tokens printed with individual auto-cuts!');
+        showToast('🖨️ All slips printed with Auto-Cut between Customer & Office copies!');
       }).catch(function(e){
         console.warn('Bluetooth print failed, opening browser print:', e);
         setTimeout(function(){ window.print(); }, 120);
@@ -1542,9 +1542,10 @@ function triggerReprint(query, reason){
     showToast('🖨️ Clean Reprint generated for Token ' + t.serial + ' (Logged to Audit)');
     closeReprintModal();
 
-    if(bluetoothCharacteristic && res.escpos_base64){
-      printTokensViaBluetooth([res.escpos_base64]).then(function(){
-        showToast('✅ Reprint printed to Bluetooth thermal printer with Auto-Cutter!');
+    if(bluetoothCharacteristic && (res.tokens_escpos || res.escpos_base64)){
+      var slipsToPrint = (res.tokens_escpos && res.tokens_escpos.length) ? res.tokens_escpos : [res.escpos_base64];
+      printTokensViaBluetooth(slipsToPrint).then(function(){
+        showToast('✅ Reprint printed with Auto-Cut between Customer & Office copies!');
       }).catch(function(err){
         console.warn('Bluetooth reprint failed, falling back to browser print:', err);
         setTimeout(function(){ window.print(); }, 120);
@@ -1693,12 +1694,13 @@ function directEscposPrint(serial, isReprint, reason){
     showToast('⏳ Printing to Bluetooth Thermal Printer with Auto-Cutter...');
     api('/api/tokens/' + encodeURIComponent(serial) + '/escpos?reprint=' + (isReprint ? 'true' : 'false') + '&reason=' + encodeURIComponent(reason || ''))
       .then(function(res){
-        if(res.escpos_base64){
-          return printTokensViaBluetooth([res.escpos_base64]);
+        var slipsToPrint = (res.tokens_escpos && res.tokens_escpos.length) ? res.tokens_escpos : (res.escpos_base64 ? [res.escpos_base64] : []);
+        if(slipsToPrint.length){
+          return printTokensViaBluetooth(slipsToPrint);
         }
       })
       .then(function(){
-        showToast('✅ Printed to Bluetooth thermal printer with Auto-Cutter!');
+        showToast('✅ Printed with Auto-Cut between Customer & Office copies!');
         if(isReprint) closeReprintModal();
       })
       .catch(function(err){
