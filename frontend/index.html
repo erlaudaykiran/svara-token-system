@@ -835,10 +835,9 @@ document.getElementById('qtyPlus').onclick = function(){
 document.getElementById('quantity').oninput = updateQtyPreview;
 
 function tokenHTML(t, copy){
-  var hasPrice = (t.price && Number(t.price) > 0);
-  var priceHeader = hasPrice ? (' &mdash; ₹' + t.price) : '';
-  var isArchana = (t.type_key === 'KA' || (t.type && t.type.indexOf('Archana') !== -1));
-  var subHeader = isArchana ? '2026 Kunkuma Archana' : '2026 Lucky Draw';
+  var priceNum = (t.price !== undefined && t.price !== null) ? Number(t.price) : 0;
+  var hasPrice = (priceNum > 0);
+  var priceHeader = hasPrice ? (' &mdash; ₹' + priceNum) : '';
   var isPending = (t.payment === 'Payment Pending' || t.payment === 'Pending');
 
   var reprintBadge = '';
@@ -851,6 +850,8 @@ function tokenHTML(t, copy){
   var pendingBanner = isPending ? '<div style="font-size:10.5px;font-weight:900;border:1.5px dashed #b00020;color:#b00020;padding:2px 0;margin:3px 0">*** PAYMENT PENDING - PLEASE COLLECT ***</div>' : '';
   var payDisplay = isPending ? '<b style="color:#b00020">PENDING (NOT PAID)</b>' : esc(t.payment);
 
+  var typeName = t.type || (t.type_key && TYPES[t.type_key]) || 'Token';
+
   return '<div class="token">' +
     reprintBadge +
     pendingBanner +
@@ -858,14 +859,14 @@ function tokenHTML(t, copy){
       '<img src="/logo.jpg" class="token-logo" alt="Logo">' +
       '<div class="token-header-text">' +
         '<div class="h">SVARA</div>' +
-        '<div class="sub">' + subHeader + '</div>' +
+        '<div class="sub">2026 Lucky Draw</div>' +
         '<div class="contact">Cell: +91 9848433020, +91 9885897093</div>' +
       '</div>' +
     '</div>' +
-    '<div class="cat">' + esc(t.type) + priceHeader + '</div>' +
+    '<div class="cat">' + esc(typeName) + priceHeader + '</div>' +
     '<div class="no">' + esc(t.serial) + '</div>' +
     '<table class="d-table">' +
-      (hasPrice ? '<tr><td class="label">Price:</td><td class="val"><b>₹' + t.price + '</b></td></tr>' : '') +
+      (hasPrice ? '<tr><td class="label">Price:</td><td class="val"><b>₹' + priceNum + '</b></td></tr>' : '') +
       '<tr><td class="label">Devotee:</td><td class="val"><b>' + esc(t.name) + '</b></td></tr>' +
       '<tr><td class="label">Mobile:</td><td class="val">' + esc(t.mobile) + '</td></tr>' +
       '<tr><td class="label">Payment:</td><td class="val">' + payDisplay + '</td></tr>' +
@@ -932,20 +933,14 @@ document.getElementById('issueBtn').onclick = function(){
     showToast('✅ Saved & Issued: ' + serText + ' (' + esc(tokensList[0].name) + ')' + revToast);
 
     toChoose();
-    if(bluetoothCharacteristic && res.escpos_base64){
-      try {
-        var binaryStr = atob(res.escpos_base64);
-        var bytes = new Uint8Array(binaryStr.length);
-        for(var i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-        sendBluetoothBytes(bytes).then(function(){
-          showToast('🖨️ Slips printed to Bluetooth Thermal Printer with Auto-Cut!');
-        }).catch(function(e){
-          console.warn('Bluetooth print failed, opening browser print:', e);
-          setTimeout(function(){ window.print(); }, 120);
-        });
-      } catch(err) {
+    if(bluetoothCharacteristic && (res.tokens_escpos || res.escpos_base64)){
+      var listToPrint = (res.tokens_escpos && res.tokens_escpos.length) ? res.tokens_escpos : [res.escpos_base64];
+      printTokensViaBluetooth(listToPrint).then(function(){
+        showToast('🖨️ All tokens printed with individual auto-cuts!');
+      }).catch(function(e){
+        console.warn('Bluetooth print failed, opening browser print:', e);
         setTimeout(function(){ window.print(); }, 120);
-      }
+      });
     } else {
       setTimeout(function(){ window.print(); }, 120);
     }
@@ -1391,6 +1386,59 @@ function sendBluetoothBytes(bytes){
   return writeChunk();
 }
 
+var btPrintQueue = [];
+var isPrintingBluetooth = false;
+
+function printTokensViaBluetooth(tokensB64List){
+  return new Promise(function(resolve, reject){
+    btPrintQueue.push({ list: tokensB64List, resolve: resolve, reject: reject });
+    processBluetoothQueue();
+  });
+}
+
+function processBluetoothQueue(){
+  if(isPrintingBluetooth || btPrintQueue.length === 0) return;
+  isPrintingBluetooth = true;
+  var job = btPrintQueue.shift();
+  var list = job.list || [];
+
+  function printNext(idx){
+    if(idx >= list.length){
+      isPrintingBluetooth = false;
+      job.resolve();
+      setTimeout(processBluetoothQueue, 50);
+      return;
+    }
+    var b64 = list[idx];
+    if(!b64){
+      printNext(idx + 1);
+      return;
+    }
+    try {
+      var binaryStr = atob(b64);
+      var bytes = new Uint8Array(binaryStr.length);
+      for(var i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+      sendBluetoothBytes(bytes).then(function(){
+        // Wait 350ms for printer buffer to clear and mechanical cutter blade to cleanly cycle
+        return new Promise(function(r){ setTimeout(r, 350); });
+      }).then(function(){
+        printNext(idx + 1);
+      }).catch(function(err){
+        isPrintingBluetooth = false;
+        job.reject(err);
+        setTimeout(processBluetoothQueue, 50);
+      });
+    } catch(e) {
+      isPrintingBluetooth = false;
+      job.reject(e);
+      setTimeout(processBluetoothQueue, 50);
+    }
+  }
+
+  printNext(0);
+}
+
 function printViaRawBT(base64Data){
   window.location.href = 'rawbt:data:base64,' + base64Data;
 }
@@ -1493,7 +1541,17 @@ function triggerReprint(query, reason){
     document.getElementById('printArea').innerHTML = printHtml;
     showToast('🖨️ Clean Reprint generated for Token ' + t.serial + ' (Logged to Audit)');
     closeReprintModal();
-    setTimeout(function(){ window.print(); }, 120);
+
+    if(bluetoothCharacteristic && res.escpos_base64){
+      printTokensViaBluetooth([res.escpos_base64]).then(function(){
+        showToast('✅ Reprint printed to Bluetooth thermal printer with Auto-Cutter!');
+      }).catch(function(err){
+        console.warn('Bluetooth reprint failed, falling back to browser print:', err);
+        setTimeout(function(){ window.print(); }, 120);
+      });
+    } else {
+      setTimeout(function(){ window.print(); }, 120);
+    }
   })
   .catch(function(e){
     alert('Reprint error: ' + e.message);
@@ -1636,10 +1694,7 @@ function directEscposPrint(serial, isReprint, reason){
     api('/api/tokens/' + encodeURIComponent(serial) + '/escpos?reprint=' + (isReprint ? 'true' : 'false') + '&reason=' + encodeURIComponent(reason || ''))
       .then(function(res){
         if(res.escpos_base64){
-          var binaryStr = atob(res.escpos_base64);
-          var bytes = new Uint8Array(binaryStr.length);
-          for(var i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-          return sendBluetoothBytes(bytes);
+          return printTokensViaBluetooth([res.escpos_base64]);
         }
       })
       .then(function(){

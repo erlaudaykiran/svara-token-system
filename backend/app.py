@@ -1034,6 +1034,7 @@ def token_json(r):
     return {
         "id": row_val(r, "id"),
         "serial": row_val(r, "serial", ""),
+        "type_key": row_val(r, "type_key", ""),
         "type": row_val(r, "token_type", ""),
         "price": int(price_val),
         "status": status_val,
@@ -1329,6 +1330,7 @@ def create_token(user):
                 )
                 created_tokens.append({
                     "serial": serial,
+                    "type_key": type_key,
                     "type": c["label"],
                     "price": unit_price,
                     "status": "ACTIVE",
@@ -1372,21 +1374,26 @@ def create_token(user):
             "mobile": mobile
         }
 
-    # Generate ESC/POS byte stream with Auto-Cutter for 80mm thermal receipt printer (Customer & Office copies)
+    # Generate individual ESC/POS byte streams with Auto-Cutter for each token (Customer & Office copies)
     raw_escpos_all = bytearray()
+    tokens_escpos = []
     for t in created_tokens:
-        raw_escpos_all.extend(escpos.generate_escpos_stream_for_token(t, include_office_copy=True, is_reprint=False))
+        t_stream = escpos.generate_escpos_stream_for_token(t, include_office_copy=True, is_reprint=False)
+        raw_escpos_all.extend(t_stream)
+        tokens_escpos.append(base64.b64encode(t_stream).decode("ascii"))
     escpos_bytes = bytes(raw_escpos_all)
     escpos_b64 = base64.b64encode(escpos_bytes).decode("ascii")
     escpos_text = "\n\n".join([escpos.generate_receipt_text(t) for t in created_tokens])
 
     res = {
         "tokens": created_tokens,
+        "tokens_escpos": tokens_escpos,
         "count": len(created_tokens),
         "total_amount": unit_price * len(created_tokens),
         "first": created_tokens[0]["serial"],
         "last": created_tokens[-1]["serial"],
         "serial": created_tokens[0]["serial"],
+        "type_key": type_key,
         "type": created_tokens[0]["type"],
         "price": unit_price,
         "status": "ACTIVE",
@@ -1726,52 +1733,73 @@ def print_token_escpos(user):
     data = request.get_json(silent=True) or {}
     query = str(data.get("query", data.get("serial", ""))).strip()
     token_id = data.get("token_id")
+    serials = data.get("serials")
     printer_name = data.get("printer_name")
     is_reprint = bool(data.get("is_reprint", False))
     reason = str(data.get("reason", "Lost or torn receipt")).strip()
 
-    if not query and not token_id:
-        return jsonify(error="Please provide token_id or serial."), 400
+    if not query and not token_id and not serials:
+        return jsonify(error="Please provide token_id, serial, or serials list."), 400
 
     db = connect()
     try:
-        matched = None
-        if token_id:
+        matched_tokens = []
+        if serials and isinstance(serials, list):
+            for s in serials:
+                r = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (str(s).strip().upper(),)).fetchone()
+                if r:
+                    matched_tokens.append(token_json(r))
+        elif token_id:
             r = db.execute("SELECT * FROM tokens WHERE id = ?", (token_id,)).fetchone()
             if r:
-                matched = token_json(r)
-        if not matched and query:
+                matched_tokens.append(token_json(r))
+        elif query:
             clean_q = query.upper()
             r = db.execute("SELECT * FROM tokens WHERE UPPER(serial) = ?", (clean_q,)).fetchone()
             if r:
-                matched = token_json(r)
+                matched_tokens.append(token_json(r))
 
-        if not matched:
-            return jsonify(error=f"Token '{query or token_id}' not found."), 404
+        if not matched_tokens:
+            return jsonify(error=f"No matching tokens found to print."), 404
 
         if is_reprint:
-            log_reprint(
-                db=db,
-                token_id=matched["id"],
-                token_serial=matched["serial"],
-                clerk_id=user["username"],
-                clerk_name=user["name"],
-                reason=reason
-            )
+            for matched in matched_tokens:
+                log_reprint(
+                    db=db,
+                    token_id=matched["id"],
+                    token_serial=matched["serial"],
+                    clerk_id=user["username"],
+                    clerk_name=user["name"],
+                    reason=reason
+                )
+                matched["is_reprint"] = True
+                matched["reprint_reason"] = reason
+                matched["reprinted_at"] = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
             db.commit()
-            matched["is_reprint"] = True
-            matched["reprint_reason"] = reason
-            matched["reprinted_at"] = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
 
-        raw_bytes = escpos.generate_escpos_stream_for_token(matched, include_office_copy=True, is_reprint=is_reprint)
-        ok, msg = escpos.send_to_thermal_printer(raw_bytes, printer_name=printer_name)
+        # Execute unified reusable print-and-cut engine
+        ok, msg = escpos.print_tokens_with_autocut(
+            tokens_list=matched_tokens,
+            printer_name=printer_name,
+            include_office_copy=True,
+            is_reprint=is_reprint
+        )
+
+        raw_bytes_all = bytearray()
+        tokens_escpos = []
+        for m in matched_tokens:
+            s_bytes = escpos.generate_escpos_stream_for_token(m, include_office_copy=True, is_reprint=is_reprint)
+            raw_bytes_all.extend(s_bytes)
+            tokens_escpos.append(base64.b64encode(s_bytes).decode("ascii"))
 
         return jsonify({
             "success": ok,
             "message": msg,
-            "token": matched,
-            "escpos_base64": base64.b64encode(raw_bytes).decode("ascii"),
-            "byte_count": len(raw_bytes)
+            "token": matched_tokens[0],
+            "tokens": matched_tokens,
+            "tokens_escpos": tokens_escpos,
+            "escpos_base64": base64.b64encode(bytes(raw_bytes_all)).decode("ascii"),
+            "byte_count": len(raw_bytes_all)
         }), (200 if ok else 500)
     finally:
         db.close()
